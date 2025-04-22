@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useI18n } from "@/components/providers/i18n-provider";
 import { LanguageSwitcher } from "@/components/auth/language-switcher";
-import { isEmailOrUsername, isValidEmail } from "@/lib/utils";
+import { isEmailOrUsername, isValidEmail, isValidUsername } from "@/lib/utils";
 
 export function LoginForm() {
   const router = useRouter();
@@ -33,6 +33,13 @@ export function LoginForm() {
     
     // 根据输入内容判断是邮箱还是用户名
     if (idType === 'email') {
+      // 验证邮箱格式
+      if (!isValidEmail(identifier)) {
+        setError(t("auth.invalid_email_format"));
+        setIsLoading(false);
+        return;
+      }
+
       const { error } = await supabase.auth.signInWithPassword({
         email: identifier,
         password,
@@ -44,6 +51,13 @@ export function LoginForm() {
         return;
       }
     } else {
+      // 验证用户名格式
+      if (!isValidUsername(identifier)) {
+        setError(t("auth.invalid_username_format"));
+        setIsLoading(false);
+        return;
+      }
+
       // 使用用户名登录
       // Supabase 原生不支持用户名登录，需要先查询用户然后使用邮箱登录
       // 这里假设用户名存储在用户元数据中
