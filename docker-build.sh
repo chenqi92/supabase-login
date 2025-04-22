@@ -30,7 +30,7 @@ show_help() {
     echo "  $0 buildlatest   构建并标记为latest版本镜像"
     echo "  $0 run 1.0.0     运行版本1.0.0的容器"
     echo "  $0 export 1.0.0  导出版本1.0.0的镜像"
-    echo "  $0 login registry.cn-hangzhou.aliyuncs.com  登录到阿里云镜像仓库"
+    echo "  $0 login docker.io  登录到Docker Hub官方仓库"
     echo "  $0 push 1.0.0    推送1.0.0版本镜像到仓库"
     echo "  $0 pull 1.0.0    从仓库拉取1.0.0版本镜像"
     echo ""
@@ -54,7 +54,7 @@ GOTRUE_EXTERNAL_GOOGLE_ENABLED=true
 APP_VERSION=$VERSION
 
 # Docker镜像仓库配置
-DOCKER_REGISTRY=registry.cn-hangzhou.aliyuncs.com
+DOCKER_REGISTRY=docker.io
 DOCKER_NAMESPACE=your-namespace
 DOCKER_REPOSITORY=supabase-login-ui
 DOCKER_USERNAME=your-username
@@ -76,10 +76,7 @@ build_image() {
     # 构建镜像
     docker build \
         --build-arg NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_PUBLIC_URL \
-        --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY \
         --build-arg NEXT_PUBLIC_SITE_URL=$SITE_URL \
-        --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=$GOTRUE_EXTERNAL_GITHUB_ENABLED \
-        --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=$GOTRUE_EXTERNAL_GOOGLE_ENABLED \
         --build-arg APP_VERSION=$VERSION \
         -t supabase-login-ui:$VERSION .
     
@@ -107,10 +104,7 @@ build_latest() {
     echo -e "${BLUE}正在构建并标记镜像...${NC}"
     docker build \
         --build-arg NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_PUBLIC_URL \
-        --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY \
         --build-arg NEXT_PUBLIC_SITE_URL=$SITE_URL \
-        --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=$GOTRUE_EXTERNAL_GITHUB_ENABLED \
-        --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=$GOTRUE_EXTERNAL_GOOGLE_ENABLED \
         --build-arg APP_VERSION=$CURRENT_VERSION \
         -t supabase-login-ui:$CURRENT_VERSION \
         -t supabase-login-ui:latest .
@@ -120,10 +114,36 @@ build_latest() {
         exit 1
     fi
     
-    # 如果配置了仓库信息，同时标记为远程镜像
-    if [ -n "$DOCKER_REGISTRY" ] && [ -n "$DOCKER_NAMESPACE" ] && [ -n "$DOCKER_REPOSITORY" ]; then
-        REMOTE_TAG_SPECIFIC="$DOCKER_REGISTRY/$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:$CURRENT_VERSION"
-        REMOTE_TAG_LATEST="$DOCKER_REGISTRY/$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:latest"
+    # 询问是否要标记远程镜像
+    echo -e "${YELLOW}是否要为镜像添加远程标记?（准备推送）[y/N]${NC}"
+    read -r answer
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+        # 先尝试登录
+        echo -e "${BLUE}请先登录到Docker仓库${NC}"
+        login_registry ${DOCKER_REGISTRY:-docker.io}
+        
+        # 获取当前登录的Docker用户名
+        CURRENT_USER=$(get_docker_username)
+        if [ $? -ne 0 ]; then
+            exit 1
+        fi
+        
+        # 检查必要的环境变量
+        if [ -z "$DOCKER_REPOSITORY" ]; then
+            echo -e "${RED}错误: 缺少仓库名称配置，请检查.env文件${NC}"
+            echo -e "${YELLOW}需要设置: DOCKER_REPOSITORY${NC}"
+            exit 1
+        fi
+        
+        # 使用Docker Hub的命名格式
+        REGISTRY=${DOCKER_REGISTRY:-docker.io}
+        if [ "$REGISTRY" = "docker.io" ]; then
+            REMOTE_TAG_SPECIFIC="$CURRENT_USER/$DOCKER_REPOSITORY:$CURRENT_VERSION"
+            REMOTE_TAG_LATEST="$CURRENT_USER/$DOCKER_REPOSITORY:latest"
+        else
+            REMOTE_TAG_SPECIFIC="$REGISTRY/$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:$CURRENT_VERSION"
+            REMOTE_TAG_LATEST="$REGISTRY/$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:latest"
+        fi
         
         echo -e "${BLUE}正在标记远程镜像...${NC}"
         docker tag supabase-login-ui:$CURRENT_VERSION $REMOTE_TAG_SPECIFIC
@@ -234,15 +254,10 @@ login_registry() {
     fi
     
     echo -e "${BLUE}正在登录到Docker镜像仓库: $REGISTRY${NC}"
+    echo -e "${YELLOW}请输入Docker Hub用户名和密码${NC}"
     
-    # 检查凭据是否在环境变量中存在
-    if [ -n "$DOCKER_USERNAME" ] && [ -n "$DOCKER_PASSWORD" ]; then
-        echo -e "${BLUE}使用环境变量中的凭据登录${NC}"
-        echo "$DOCKER_PASSWORD" | docker login $REGISTRY -u "$DOCKER_USERNAME" --password-stdin
-    else
-        echo -e "${YELLOW}环境变量中未找到Docker凭据，将进入交互式登录${NC}"
-        docker login $REGISTRY
-    fi
+    # 始终使用交互式登录
+    docker login $REGISTRY
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}登录失败!${NC}"
@@ -250,6 +265,26 @@ login_registry() {
     fi
     
     echo -e "${GREEN}登录成功${NC}"
+}
+
+# 获取Docker用户名
+get_docker_username() {
+    # 先尝试从docker info获取
+    CURRENT_USER=$(docker info 2>/dev/null | grep Username | awk '{print $2}')
+    
+    # 如果获取失败，则提示用户输入
+    if [ -z "$CURRENT_USER" ]; then
+        echo -e "${YELLOW}未能自动获取Docker用户名，请手动输入:${NC}"
+        read -r CURRENT_USER
+        
+        if [ -z "$CURRENT_USER" ]; then
+            echo -e "${RED}错误: 未提供Docker用户名${NC}"
+            return 1
+        fi
+    fi
+    
+    echo "$CURRENT_USER"
+    return 0
 }
 
 # 推送镜像到仓库
@@ -260,20 +295,35 @@ push_image() {
     export $(grep -v '^#' .env | xargs)
     
     # 检查必要的环境变量
-    if [ -z "$DOCKER_REGISTRY" ] || [ -z "$DOCKER_NAMESPACE" ] || [ -z "$DOCKER_REPOSITORY" ]; then
-        echo -e "${RED}错误: 缺少镜像仓库配置，请检查.env文件${NC}"
-        echo -e "${YELLOW}需要设置: DOCKER_REGISTRY, DOCKER_NAMESPACE, DOCKER_REPOSITORY${NC}"
+    if [ -z "$DOCKER_REPOSITORY" ]; then
+        echo -e "${RED}错误: 缺少仓库名称配置，请检查.env文件${NC}"
+        echo -e "${YELLOW}需要设置: DOCKER_REPOSITORY${NC}"
         exit 1
     fi
     
     # 检查镜像是否存在
-    if ! docker images | grep -q "supabase-login-ui" | grep -q "$VERSION"; then
+    if ! docker images supabase-login-ui:$VERSION > /dev/null 2>&1; then
         echo -e "${RED}错误: 镜像 supabase-login-ui:$VERSION 不存在，请先构建镜像${NC}"
         exit 1
     fi
     
-    # 构建远程镜像标签
-    REMOTE_TAG="$DOCKER_REGISTRY/$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:$VERSION"
+    # 先尝试登录
+    echo -e "${BLUE}请先登录到Docker仓库${NC}"
+    login_registry ${DOCKER_REGISTRY:-docker.io}
+    
+    # 获取当前登录的Docker用户名
+    CURRENT_USER=$(get_docker_username)
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+    
+    # 使用Docker Hub的命名格式
+    REGISTRY=${DOCKER_REGISTRY:-docker.io}
+    if [ "$REGISTRY" = "docker.io" ]; then
+        REMOTE_TAG="$CURRENT_USER/$DOCKER_REPOSITORY:$VERSION"
+    else
+        REMOTE_TAG="$REGISTRY/$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:$VERSION"
+    fi
     
     echo -e "${BLUE}正在标记镜像: $REMOTE_TAG${NC}"
     docker tag supabase-login-ui:$VERSION $REMOTE_TAG
@@ -290,7 +340,12 @@ push_image() {
     if [ "$VERSION" = "latest" ]; then
         TIMESTAMP=$(date +%Y%m%d-%H%M%S)
         CURRENT_VERSION="${APP_VERSION}.${TIMESTAMP}"
-        REMOTE_TAG_SPECIFIC="$DOCKER_REGISTRY/$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:$CURRENT_VERSION"
+        
+        if [ "$REGISTRY" = "docker.io" ]; then
+            REMOTE_TAG_SPECIFIC="$CURRENT_USER/$DOCKER_REPOSITORY:$CURRENT_VERSION"
+        else
+            REMOTE_TAG_SPECIFIC="$REGISTRY/$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:$CURRENT_VERSION"
+        fi
         
         echo -e "${BLUE}同时推送时间戳版本: $REMOTE_TAG_SPECIFIC${NC}"
         docker tag supabase-login-ui:latest $REMOTE_TAG_SPECIFIC
@@ -308,14 +363,29 @@ pull_image() {
     export $(grep -v '^#' .env | xargs)
     
     # 检查必要的环境变量
-    if [ -z "$DOCKER_REGISTRY" ] || [ -z "$DOCKER_NAMESPACE" ] || [ -z "$DOCKER_REPOSITORY" ]; then
-        echo -e "${RED}错误: 缺少镜像仓库配置，请检查.env文件${NC}"
-        echo -e "${YELLOW}需要设置: DOCKER_REGISTRY, DOCKER_NAMESPACE, DOCKER_REPOSITORY${NC}"
+    if [ -z "$DOCKER_REPOSITORY" ]; then
+        echo -e "${RED}错误: 缺少仓库名称配置，请检查.env文件${NC}"
+        echo -e "${YELLOW}需要设置: DOCKER_REPOSITORY${NC}"
         exit 1
     fi
     
-    # 构建远程镜像标签
-    REMOTE_TAG="$DOCKER_REGISTRY/$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:$VERSION"
+    # 先尝试登录
+    echo -e "${BLUE}请先登录到Docker仓库${NC}"
+    login_registry ${DOCKER_REGISTRY:-docker.io}
+    
+    # 获取当前登录的Docker用户名
+    CURRENT_USER=$(get_docker_username)
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+    
+    # 使用Docker Hub的命名格式
+    REGISTRY=${DOCKER_REGISTRY:-docker.io}
+    if [ "$REGISTRY" = "docker.io" ]; then
+        REMOTE_TAG="$CURRENT_USER/$DOCKER_REPOSITORY:$VERSION"
+    else
+        REMOTE_TAG="$REGISTRY/$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:$VERSION"
+    fi
     
     echo -e "${BLUE}正在从仓库拉取镜像: $REMOTE_TAG${NC}"
     docker pull $REMOTE_TAG
