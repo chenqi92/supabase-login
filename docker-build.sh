@@ -7,7 +7,7 @@
 VERSION=${2:-1.0.0}
 IMAGE_NAME="supabase-login-ui"
 CONTAINER_NAME="supabase-login-ui"
-BASE_IMAGE="registry.cn-hangzhou.aliyuncs.com/nodejs-image/node:18-slim"
+BASE_IMAGE="node:18-alpine"
 PORT=3000
 SUPABASE_URL="https://database.allbs.cn"
 ANON_KEY="your_anon_key"

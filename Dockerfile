@@ -1,4 +1,4 @@
-FROM registry.cn-hangzhou.aliyuncs.com/nodejs-image/node:18-slim AS base
+FROM node:18-alpine AS base
 
 # 安装依赖
 FROM base AS deps

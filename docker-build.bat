@@ -10,7 +10,7 @@ set VERSION=%2
 if "%VERSION%"=="" set VERSION=1.0.0
 set IMAGE_NAME=supabase-login-ui
 set CONTAINER_NAME=supabase-login-ui
-set BASE_IMAGE=registry.cn-hangzhou.aliyuncs.com/nodejs-image/node:18-slim
+set BASE_IMAGE=registry.cn-hangzhou.aliyuncs.com/nodejs-image/node:18-alpine
 set PORT=3000
 set SUPABASE_URL=https://database.allbs.cn
 set ANON_KEY=your_anon_key

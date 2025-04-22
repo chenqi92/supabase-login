@@ -48,7 +48,7 @@ build-local.bat 1.0.0
 本项目使用官方slim版本的Node.js镜像，并解决了软件源问题：
 
 ```
-FROM node:18-slim AS base
+FROM node:18-alpine AS base
 ```
 
 ### 修复问题
@@ -198,7 +198,7 @@ docker-build.bat help
 本项目使用阿里云提供的Node.js镜像，并配置了国内Debian软件源：
 
 ```dockerfile
-FROM registry.cn-hangzhou.aliyuncs.com/nodejs-image/node:18-slim AS base
+FROM registry.cn-hangzhou.aliyuncs.com/nodejs-image/node:18-alpine AS base
 
 # 替换为国内软件源
 RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list \
@@ -248,7 +248,7 @@ RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list \
 
 3. **直接拉取基础镜像**：
    ```bash
-   docker pull registry.cn-hangzhou.aliyuncs.com/nodejs-image/node:18-slim
+   docker pull registry.cn-hangzhou.aliyuncs.com/nodejs-image/node:18-alpine
    ```
 
 ### 2. 构建失败排查
@@ -269,10 +269,10 @@ RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list \
    可以编辑Dockerfile，尝试其他镜像源：
    ```
    # 使用腾讯云镜像
-   FROM ccr.ccs.tencentyun.com/library/node:18-slim
+   FROM ccr.ccs.tencentyun.com/library/node:18-alpine
    
    # 或使用Docker中国区官方镜像
-   FROM registry.docker-cn.com/library/node:18-slim
+   FROM registry.docker-cn.com/library/node:18-alpine
    ```
 
 ## 注意事项
