@@ -12,6 +12,8 @@ PORT=3000
 SUPABASE_URL="https://database.allbs.cn"
 ANON_KEY="your_anon_key"
 SITE_URL="https://login.allbs.cn"
+GITHUB_ENABLED="true"
+GOOGLE_ENABLED="true"
 
 # 命令列表
 COMMANDS=("build" "run" "export" "help")
@@ -84,7 +86,13 @@ pull_base_image() {
 load_env() {
     if [ -f .env ]; then
         echo "加载.env文件..."
-        source .env
+        # 只加载非注释行且非空行
+        while IFS= read -r line || [ -n "$line" ]; do
+            # 跳过注释行和空行
+            if [[ ! "$line" =~ ^# ]] && [[ -n "$line" ]]; then
+                export "$line"
+            fi
+        done < .env
     fi
 
     # 设置默认值（如果未在.env中设置）
@@ -123,7 +131,6 @@ build_image() {
 
     echo "构建Docker镜像..."
     docker build \
-      --network=host \
       --build-arg NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_URL \
       --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY \
       --build-arg NEXT_PUBLIC_SITE_URL=$SITE_URL \
