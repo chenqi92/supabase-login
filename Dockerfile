@@ -1,47 +1,50 @@
-FROM node:18-slim
+# 使用轻量级Alpine镜像 
+FROM node:18-alpine
 
+# 设置工作目录
 WORKDIR /app
 
-COPY package*.json ./
+# 设置国内镜像源
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories && \
+    apk add --no-cache curl
 
-# 安装依赖
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget \
-    && rm -rf /var/lib/apt/lists/* \
-    && npm config set registry https://registry.npmmirror.com \
-    && npm install
+# 设置npm国内源并仅复制package.json文件
+COPY package*.json ./
+RUN npm config set registry https://registry.npmmirror.com && \
+    npm install
 
 # 复制源代码
 COPY . .
 
-# 设置构建参数（非敏感信息）
+# 设置构建参数
 ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SITE_URL
 ARG APP_VERSION=1.0.0
 
-# 设置环境变量（非敏感信息）
-ENV NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
-ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
-ENV APP_VERSION=${APP_VERSION}
-ENV NODE_ENV=production
-ENV TZ=Asia/Shanghai
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
+# 环境变量配置
+ENV NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL} \
+    NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL} \
+    APP_VERSION=${APP_VERSION} \
+    NODE_ENV=production \
+    TZ=Asia/Shanghai \
+    PORT=3000 \
+    HOSTNAME="0.0.0.0"
 
-# 添加版本信息文件
+# 添加版本信息
 RUN mkdir -p ./public && \
     echo "Version: ${APP_VERSION}" > ./public/version.txt && \
     echo "Build date: $(date)" >> ./public/version.txt
 
+# 开放3000端口
 EXPOSE 3000
 
 # 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 CMD curl -f http://localhost:3000/ || exit 1
 
-# 添加标签
-LABEL maintainer="ALLBS Team"
-LABEL version="${APP_VERSION}"
-LABEL description="Supabase登录UI"
+# 镜像标签
+LABEL maintainer="ALLBS Team" \
+      version="${APP_VERSION}" \
+      description="Supabase登录UI"
 
-# 启动开发服务器，绕过构建过程
+# 直接使用开发模式启动应用，绕过构建步骤
 CMD ["npm", "run", "dev"]

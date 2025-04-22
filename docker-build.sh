@@ -238,12 +238,61 @@ export_image() {
     echo -e "${BLUE}docker load -i $EXPORT_FILE${NC}"
 }
 
+# 检查是否已登录Docker
+check_docker_login() {
+    REGISTRY=${1:-docker.io}
+    
+    # 检查凭据文件是否存在
+    if [ -f ~/.docker/config.json ]; then
+        # 如果使用凭据存储，则假定已登录
+        if grep -q "credsStore" ~/.docker/config.json; then
+            # 尝试获取用户名作为额外验证
+            CURRENT_USER=$(docker info 2>/dev/null | grep Username | awk '{print $2}')
+            if [ -n "$CURRENT_USER" ]; then
+                echo -e "${GREEN}已使用用户 $CURRENT_USER 登录到Docker${NC}"
+                return 0
+            fi
+        fi
+        
+        # 检查配置文件中是否包含指定的仓库
+        if [ "$REGISTRY" = "docker.io" ]; then
+            if grep -q "index.docker.io/v1" ~/.docker/config.json; then
+                echo -e "${GREEN}已登录到Docker Hub${NC}"
+                return 0
+            fi
+        elif grep -q "$REGISTRY" ~/.docker/config.json; then
+            echo -e "${GREEN}已登录到 $REGISTRY${NC}"
+            return 0
+        fi
+    fi
+    
+    echo -e "${YELLOW}未登录到Docker仓库${NC}"
+    return 1
+}
+
+# 获取Docker用户名（改进版）
+get_docker_username() {
+    # 先尝试从docker info获取
+    CURRENT_USER=$(docker info 2>/dev/null | grep Username | awk '{print $2}')
+    
+    # 如果上面的方法获取失败，询问用户输入
+    if [ -z "$CURRENT_USER" ]; then
+        echo -e "${YELLOW}未能自动获取Docker用户名，请手动输入:${NC}" >&2
+        read -r CURRENT_USER
+        
+        if [ -z "$CURRENT_USER" ]; then
+            echo -e "${RED}错误: 未提供Docker用户名${NC}" >&2
+            return 1
+        fi
+    fi
+    
+    echo "$CURRENT_USER"
+    return 0
+}
+
 # 登录到Docker镜像仓库
 login_registry() {
     check_env_file
-    
-    # 加载环境变量
-    export $(grep -v '^#' .env | xargs)
     
     # 如果提供了仓库地址参数，则使用参数值
     REGISTRY=${1:-$DOCKER_REGISTRY}
@@ -253,10 +302,15 @@ login_registry() {
         REGISTRY="docker.io"
     fi
     
+    # 检查是否已登录
+    if check_docker_login $REGISTRY; then
+        return 0
+    fi
+    
     echo -e "${BLUE}正在登录到Docker镜像仓库: $REGISTRY${NC}"
     echo -e "${YELLOW}请输入Docker Hub用户名和密码${NC}"
     
-    # 始终使用交互式登录
+    # 始终使用交互式登录，不使用环境变量中的凭据
     docker login $REGISTRY
     
     if [ $? -ne 0 ]; then
@@ -265,26 +319,6 @@ login_registry() {
     fi
     
     echo -e "${GREEN}登录成功${NC}"
-}
-
-# 获取Docker用户名
-get_docker_username() {
-    # 先尝试从docker info获取
-    CURRENT_USER=$(docker info 2>/dev/null | grep Username | awk '{print $2}')
-    
-    # 如果获取失败，则提示用户输入
-    if [ -z "$CURRENT_USER" ]; then
-        echo -e "${YELLOW}未能自动获取Docker用户名，请手动输入:${NC}"
-        read -r CURRENT_USER
-        
-        if [ -z "$CURRENT_USER" ]; then
-            echo -e "${RED}错误: 未提供Docker用户名${NC}"
-            return 1
-        fi
-    fi
-    
-    echo "$CURRENT_USER"
-    return 0
 }
 
 # 推送镜像到仓库
@@ -302,14 +336,14 @@ push_image() {
     fi
     
     # 检查镜像是否存在
-    if ! docker images supabase-login-ui:$VERSION > /dev/null 2>&1; then
+    if ! docker images | grep "supabase-login-ui" | grep "$VERSION" > /dev/null; then
         echo -e "${RED}错误: 镜像 supabase-login-ui:$VERSION 不存在，请先构建镜像${NC}"
         exit 1
     fi
     
-    # 先尝试登录
-    echo -e "${BLUE}请先登录到Docker仓库${NC}"
-    login_registry ${DOCKER_REGISTRY:-docker.io}
+    # 确保已登录
+    REGISTRY=${DOCKER_REGISTRY:-docker.io}
+    login_registry $REGISTRY
     
     # 获取当前登录的Docker用户名
     CURRENT_USER=$(get_docker_username)
@@ -317,8 +351,9 @@ push_image() {
         exit 1
     fi
     
+    echo -e "${BLUE}准备推送镜像，使用用户: $CURRENT_USER${NC}"
+    
     # 使用Docker Hub的命名格式
-    REGISTRY=${DOCKER_REGISTRY:-docker.io}
     if [ "$REGISTRY" = "docker.io" ]; then
         REMOTE_TAG="$CURRENT_USER/$DOCKER_REPOSITORY:$VERSION"
     else
@@ -328,13 +363,36 @@ push_image() {
     echo -e "${BLUE}正在标记镜像: $REMOTE_TAG${NC}"
     docker tag supabase-login-ui:$VERSION $REMOTE_TAG
     
+    # 确认要推送的镜像
+    echo -e "${YELLOW}确认要推送以下镜像吗? ${NC}"
+    echo -e "  本地镜像: ${GREEN}supabase-login-ui:$VERSION${NC}"
+    echo -e "  远程镜像: ${GREEN}$REMOTE_TAG${NC}"
+    echo -e "${YELLOW}是否继续? [Y/n]${NC}"
+    read -r confirm
+    
+    if [[ "$confirm" =~ ^[Nn]$ ]]; then
+        echo -e "${YELLOW}已取消推送操作${NC}"
+        return 0
+    fi
+    
     echo -e "${BLUE}正在推送镜像到仓库...${NC}"
     docker push $REMOTE_TAG
     
     if [ $? -ne 0 ]; then
-        echo -e "${RED}推送失败!${NC}"
+        echo -e "${RED}推送失败! 可能的原因:${NC}"
+        echo -e "  1. ${YELLOW}您没有权限推送到 $REMOTE_TAG${NC}"
+        echo -e "  2. ${YELLOW}仓库 $CURRENT_USER/$DOCKER_REPOSITORY 不存在，请先在Docker Hub创建${NC}"
+        echo -e "  3. ${YELLOW}网络连接问题${NC}"
+        echo -e "  4. ${YELLOW}Docker Hub账号凭据已过期${NC}"
+        
+        echo -e "${BLUE}解决方案:${NC}"
+        echo -e "  - 在Docker Hub创建仓库: $DOCKER_REPOSITORY"
+        echo -e "  - 重新登录Docker: docker login"
+        echo -e "  - 检查网络连接"
         exit 1
     fi
+    
+    echo -e "${GREEN}成功推送镜像: $REMOTE_TAG${NC}"
     
     # 如果版本是latest，同时也推送特定版本
     if [ "$VERSION" = "latest" ]; then
@@ -350,9 +408,15 @@ push_image() {
         echo -e "${BLUE}同时推送时间戳版本: $REMOTE_TAG_SPECIFIC${NC}"
         docker tag supabase-login-ui:latest $REMOTE_TAG_SPECIFIC
         docker push $REMOTE_TAG_SPECIFIC
+        
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}推送特定版本失败!${NC}"
+        else
+            echo -e "${GREEN}成功推送时间戳版本: $REMOTE_TAG_SPECIFIC${NC}"
+        fi
     fi
     
-    echo -e "${GREEN}镜像已成功推送: $REMOTE_TAG${NC}"
+    echo -e "${GREEN}镜像推送完成!${NC}"
 }
 
 # 从仓库拉取镜像
