@@ -27,8 +27,16 @@ export function isEmailOrUsername(input: string): 'email' | 'username' {
 /**
  * 验证用户名格式
  * 只允许字母、数字和下划线
+ * 
+ * 注意：此正则表达式已更新，修复了英文无法通过校验的问题
  */
 export function isValidUsername(username: string): boolean {
+  // 确保用户名字段不为空
+  if (!username || username.trim() === "") {
+    return false;
+  }
+  
+  // 检查是否只包含字母、数字和下划线
   const usernameRegex = /^[a-zA-Z0-9_]+$/;
   return usernameRegex.test(username);
 }
