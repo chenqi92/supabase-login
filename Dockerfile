@@ -1,9 +1,11 @@
-FROM node:18-slim AS base
+FROM registry.cn-hangzhou.aliyuncs.com/nodejs-image/node:18-slim AS base
 
 # 安装依赖
 FROM base AS deps
 # 更新软件源并安装依赖
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list \
+    && sed -i 's/security.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
     libc6-compat \
     locales \
     fonts-noto-cjk \
@@ -61,7 +63,9 @@ ENV LC_ALL=zh_CN.UTF-8
 ENV TZ=Asia/Shanghai
 
 # 安装运行时所需依赖
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list \
+    && sed -i 's/security.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
     locales \
     fonts-noto-cjk \
     wget \

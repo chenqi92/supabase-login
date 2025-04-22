@@ -139,3 +139,145 @@ export LANG=zh_CN.UTF-8
 - 生产环境建议使用固定版本号，而不是latest标签
 - 构建脚本会自动处理版本标签和容器管理
 - 推荐使用简化版构建脚本(local-build.sh/bat)以减少依赖 
+
+# 国内环境Docker构建指南
+
+本项目适配国内网络环境的Docker构建方案，包括环境变量映射、镜像源替换和离线部署等功能。
+
+## 环境变量对应关系
+
+| Supabase变量名 | 前端变量名 | 说明 |
+|--------------|-----------|------|
+| `SUPABASE_PUBLIC_URL` | `NEXT_PUBLIC_SUPABASE_URL` | Supabase API服务地址 |
+| `ANON_KEY` | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase匿名访问密钥 |
+| `SITE_URL` | `NEXT_PUBLIC_SITE_URL` | 应用站点URL，用于OAuth回调 |
+| `GOTRUE_EXTERNAL_GITHUB_ENABLED` | `NEXT_PUBLIC_AUTH_GITHUB_ENABLED` | 是否启用GitHub登录 |
+| `GOTRUE_EXTERNAL_GOOGLE_ENABLED` | `NEXT_PUBLIC_AUTH_GOOGLE_ENABLED` | 是否启用Google登录 |
+| `APP_VERSION` | `APP_VERSION` | 应用版本号 |
+
+## 快速开始
+
+我们提供了一个整合版脚本，简化所有操作：
+
+```bash
+# Linux/macOS
+chmod +x docker-build.sh
+
+# 构建镜像
+./docker-build.sh build 1.0.0
+
+# 运行容器
+./docker-build.sh run 1.0.0
+
+# 导出镜像
+./docker-build.sh export 1.0.0
+
+# 查看帮助
+./docker-build.sh help
+```
+
+```batch
+# Windows
+# 构建镜像
+docker-build.bat build 1.0.0
+
+# 运行容器
+docker-build.bat run 1.0.0
+
+# 导出镜像
+docker-build.bat export 1.0.0
+
+# 查看帮助
+docker-build.bat help
+```
+
+## Docker 构建说明
+
+### 基础镜像与软件源
+
+本项目使用阿里云提供的Node.js镜像，并配置了国内Debian软件源：
+
+```dockerfile
+FROM registry.cn-hangzhou.aliyuncs.com/nodejs-image/node:18-slim AS base
+
+# 替换为国内软件源
+RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list \
+    && sed -i 's/security.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list
+```
+
+### 主要功能改进
+
+1. **网络连接问题解决**
+   - 使用国内容器镜像源
+   - 替换Debian软件源为中科大镜像
+   - 添加预拉取基础镜像的步骤
+
+2. **中文支持**
+   - 安装中文字体和语言包
+   - 配置UTF-8编码
+   - 设置正确的区域变量
+
+3. **构建增强**
+   - 增加故障检测和错误处理
+   - 提供离线部署方案
+   - 添加版本控制和日志记录
+
+## 常见问题排查
+
+### 1. Docker连接问题
+
+如果仍然出现连接错误：
+
+1. **使用镜像导出方案**：
+   ```bash
+   ./docker-build.sh export 1.0.0  # 在可以联网的机器上构建和导出
+   ```
+
+2. **手动设置Docker镜像源**：
+   编辑 `/etc/docker/daemon.json` (Linux) 或 `%programdata%\docker\config\daemon.json` (Windows)：
+   ```json
+   {
+     "registry-mirrors": [
+       "https://registry.docker-cn.com",
+       "https://mirror.baidubce.com",
+       "https://hub-mirror.c.163.com"
+     ]
+   }
+   ```
+   然后重启Docker服务。
+
+3. **直接拉取基础镜像**：
+   ```bash
+   docker pull registry.cn-hangzhou.aliyuncs.com/nodejs-image/node:18-slim
+   ```
+
+### 2. 构建失败排查
+
+如果构建过程失败：
+
+1. 检查错误日志：
+   ```bash
+   docker logs <container_id>
+   ```
+
+2. 查看构建缓存：
+   ```bash
+   docker build --progress=plain -t supabase-login-ui .
+   ```
+
+3. 尝试不同的基础镜像：
+   可以编辑Dockerfile，尝试其他镜像源：
+   ```
+   # 使用腾讯云镜像
+   FROM ccr.ccs.tencentyun.com/library/node:18-slim
+   
+   # 或使用Docker中国区官方镜像
+   FROM registry.docker-cn.com/library/node:18-slim
+   ```
+
+## 注意事项
+
+- 前端代码中使用`NEXT_PUBLIC_`前缀的变量
+- 生产环境建议使用固定版本号，不要使用latest标签
+- 使用整合版构建脚本可以减少Docker Hub连接问题
+- 对于完全无法联网的环境，使用镜像导出和加载功能 
