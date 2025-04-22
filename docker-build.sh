@@ -1,262 +1,354 @@
 #!/bin/bash
 
-# Supabase登录UI - Docker构建工具
-# 功能：构建、运行、导出、帮助
+# 设置错误时退出
+set -e
 
-# 默认设置
-VERSION=${2:-1.0.0}
-IMAGE_NAME="supabase-login-ui"
-CONTAINER_NAME="supabase-login-ui"
-BASE_IMAGE="node:18-alpine"
-PORT=3000
-SUPABASE_URL="https://database.allbs.cn"
-ANON_KEY="your_anon_key"
-SITE_URL="https://login.allbs.cn"
-GITHUB_ENABLED="true"
-GOOGLE_ENABLED="true"
-
-# 命令列表
-COMMANDS=("build" "run" "export" "help")
+# 颜色定义
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # 无颜色
 
 # 显示帮助信息
 show_help() {
-    echo "使用方法: $0 命令 [参数]"
+    echo -e "${BLUE}Supabase 登录 UI Docker 构建工具${NC}"
+    echo "用法: $0 [命令] [版本号]"
     echo ""
-    echo "可用命令:"
-    echo "  build [版本号]    - 构建Docker镜像 (默认版本: 1.0.0)"
-    echo "  run [版本号]      - 运行已构建的Docker镜像 (默认版本: 1.0.0)"
-    echo "  export [版本号]   - 导出Docker镜像为.tar文件 (默认版本: 1.0.0)"
-    echo "  help             - 显示帮助信息"
+    echo "命令:"
+    echo "  build [版本号]    构建Docker镜像"
+    echo "  buildlatest       构建并标记为latest版本镜像"
+    echo "  run [版本号]      运行Docker容器"
+    echo "  export [版本号]   导出Docker镜像为tar文件"
+    echo "  login [仓库地址]  登录到Docker镜像仓库"
+    echo "  push [版本号]     推送镜像到仓库"
+    echo "  pull [版本号]     从仓库拉取镜像"
+    echo "  help             显示此帮助信息"
     echo ""
     echo "示例:"
-    echo "  $0 build 1.0.0   - 构建版本1.0.0的镜像"
-    echo "  $0 run           - 运行最新构建的镜像"
-    echo "  $0 export 1.0.0  - 导出版本1.0.0的镜像"
+    echo "  $0 build 1.0.0   构建版本1.0.0的镜像"
+    echo "  $0 buildlatest   构建并标记为latest版本镜像"
+    echo "  $0 run 1.0.0     运行版本1.0.0的容器"
+    echo "  $0 export 1.0.0  导出版本1.0.0的镜像"
+    echo "  $0 login registry.cn-hangzhou.aliyuncs.com  登录到阿里云镜像仓库"
+    echo "  $0 push 1.0.0    推送1.0.0版本镜像到仓库"
+    echo "  $0 pull 1.0.0    从仓库拉取1.0.0版本镜像"
     echo ""
-    echo "环境变量可以通过.env文件设置"
 }
 
-# 检查命令是否有效
-is_valid_command() {
-    for cmd in "${COMMANDS[@]}"; do
-        if [[ "$cmd" == "$1" ]]; then
-            return 0
-        fi
-    done
-    return 1
-}
+# 检查环境变量文件
+check_env_file() {
+    if [ ! -f .env ]; then
+        echo -e "${YELLOW}警告: .env 文件不存在，将创建示例环境变量文件${NC}"
+        cat > .env << EOF
+# Supabase 配置
+SUPABASE_PUBLIC_URL=https://database.allbs.cn
+ANON_KEY=your_anon_key
+SITE_URL=https://login.allbs.cn
 
-# 检查Docker守护进程是否运行
-check_docker() {
-    if ! docker info > /dev/null 2>&1; then
-        echo "错误: Docker守护进程未运行，请启动Docker服务"
+# OAuth配置
+GOTRUE_EXTERNAL_GITHUB_ENABLED=true
+GOTRUE_EXTERNAL_GOOGLE_ENABLED=true
+
+# 版本控制
+APP_VERSION=$VERSION
+
+# Docker镜像仓库配置
+DOCKER_REGISTRY=registry.cn-hangzhou.aliyuncs.com
+DOCKER_NAMESPACE=your-namespace
+DOCKER_REPOSITORY=supabase-login-ui
+DOCKER_USERNAME=your-username
+DOCKER_PASSWORD=your-password
+EOF
+        echo -e "${GREEN}已创建 .env 文件，请编辑其中的配置再继续${NC}"
         exit 1
     fi
 }
 
-# 检查网络连接
-check_network() {
-    echo "检查网络连接..."
-    if ! ping -c 1 registry.cn-hangzhou.aliyuncs.com > /dev/null 2>&1; then
-        echo "警告: 无法连接到阿里云镜像服务，可能存在网络问题"
-        echo "继续尝试构建..."
-    fi
-}
-
-# 预先拉取基础镜像
-pull_base_image() {
-    echo "尝试预先拉取基础镜像..."
-    if ! docker pull $BASE_IMAGE; then
-        echo "警告: 无法拉取基础镜像，将尝试使用本地缓存继续构建"
-        # 检查是否有本地缓存
-        if ! docker images $BASE_IMAGE | grep -q $BASE_IMAGE; then
-            echo "错误: 本地无缓存的基础镜像，构建可能会失败"
-            echo "您可以尝试手动设置Docker镜像源后再试"
-            echo "是否继续构建? (y/n)"
-            read -r continue_build
-            if [[ "$continue_build" != "y" && "$continue_build" != "Y" ]]; then
-                echo "构建已取消"
-                exit 1
-            fi
-        fi
-    fi
-}
-
-# 加载环境变量
-load_env() {
-    if [ -f .env ]; then
-        echo "加载.env文件..."
-        # 只加载非注释行且非空行
-        while IFS= read -r line || [ -n "$line" ]; do
-            # 跳过注释行和空行
-            if [[ ! "$line" =~ ^# ]] && [[ -n "$line" ]]; then
-                export "$line"
-            fi
-        done < .env
-    fi
-
-    # 设置默认值（如果未在.env中设置）
-    SUPABASE_URL=${SUPABASE_PUBLIC_URL:-$SUPABASE_URL}
-    ANON_KEY=${ANON_KEY:-"your_anon_key"}
-    SITE_URL=${SITE_URL:-$SITE_URL}
-    GITHUB_ENABLED=${GOTRUE_EXTERNAL_GITHUB_ENABLED:-true}
-    GOOGLE_ENABLED=${GOTRUE_EXTERNAL_GOOGLE_ENABLED:-true}
-}
-
-# 清理旧容器和镜像
-cleanup() {
-    # 检查是否有旧容器运行
-    if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
-        echo "停止并移除现有容器..."
-        docker stop $CONTAINER_NAME
-        docker rm $CONTAINER_NAME
-    fi
-
-    # 检查是否有旧镜像
-    if [ "$(docker images -q $IMAGE_NAME:$VERSION)" ]; then
-        echo "移除旧版本镜像..."
-        docker rmi $IMAGE_NAME:$VERSION
-    fi
-}
-
-# 构建镜像
+# 构建Docker镜像
 build_image() {
-    echo "=== 开始构建版本: $VERSION ==="
+    echo -e "${BLUE}开始构建 supabase-login-ui:$VERSION 镜像...${NC}"
+    check_env_file
     
-    check_docker
-    check_network
-    pull_base_image
-    load_env
-    cleanup
-
-    echo "构建Docker镜像..."
+    # 加载环境变量
+    export $(grep -v '^#' .env | xargs)
+    
+    # 构建镜像
     docker build \
-      --build-arg NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_URL \
-      --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY \
-      --build-arg NEXT_PUBLIC_SITE_URL=$SITE_URL \
-      --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=$GITHUB_ENABLED \
-      --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=$GOOGLE_ENABLED \
-      --build-arg APP_VERSION=$VERSION \
-      -t $IMAGE_NAME:latest .
-
-    # 检查构建是否成功
+        --build-arg NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_PUBLIC_URL \
+        --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY \
+        --build-arg NEXT_PUBLIC_SITE_URL=$SITE_URL \
+        --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=$GOTRUE_EXTERNAL_GITHUB_ENABLED \
+        --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=$GOTRUE_EXTERNAL_GOOGLE_ENABLED \
+        --build-arg APP_VERSION=$VERSION \
+        -t supabase-login-ui:$VERSION .
+    
     if [ $? -ne 0 ]; then
-        echo "错误: Docker镜像构建失败"
+        echo -e "${RED}构建失败!${NC}"
         exit 1
     fi
-
-    echo "为镜像添加版本标签..."
-    docker tag $IMAGE_NAME:latest $IMAGE_NAME:$VERSION
-
-    echo "=== 构建完成! ==="
-    echo "镜像版本: $VERSION"
-    echo "现在可以运行: $0 run $VERSION"
+    
+    echo -e "${GREEN}镜像构建完成: supabase-login-ui:$VERSION${NC}"
 }
 
-# 运行容器
+# 构建latest版本镜像
+build_latest() {
+    echo -e "${BLUE}开始构建 latest 版本镜像...${NC}"
+    check_env_file
+    
+    # 加载环境变量
+    export $(grep -v '^#' .env | xargs)
+    
+    # 生成带时间戳的版本号
+    TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+    CURRENT_VERSION="${APP_VERSION}.${TIMESTAMP}"
+    
+    # 构建镜像 - 同时标记为特定版本和latest
+    echo -e "${BLUE}正在构建并标记镜像...${NC}"
+    docker build \
+        --build-arg NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_PUBLIC_URL \
+        --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY \
+        --build-arg NEXT_PUBLIC_SITE_URL=$SITE_URL \
+        --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=$GOTRUE_EXTERNAL_GITHUB_ENABLED \
+        --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=$GOTRUE_EXTERNAL_GOOGLE_ENABLED \
+        --build-arg APP_VERSION=$CURRENT_VERSION \
+        -t supabase-login-ui:$CURRENT_VERSION \
+        -t supabase-login-ui:latest .
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}构建失败!${NC}"
+        exit 1
+    fi
+    
+    # 如果配置了仓库信息，同时标记为远程镜像
+    if [ -n "$DOCKER_REGISTRY" ] && [ -n "$DOCKER_NAMESPACE" ] && [ -n "$DOCKER_REPOSITORY" ]; then
+        REMOTE_TAG_SPECIFIC="$DOCKER_REGISTRY/$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:$CURRENT_VERSION"
+        REMOTE_TAG_LATEST="$DOCKER_REGISTRY/$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:latest"
+        
+        echo -e "${BLUE}正在标记远程镜像...${NC}"
+        docker tag supabase-login-ui:$CURRENT_VERSION $REMOTE_TAG_SPECIFIC
+        docker tag supabase-login-ui:latest $REMOTE_TAG_LATEST
+        
+        echo -e "${GREEN}已标记远程镜像: ${NC}"
+        echo -e "${GREEN}- $REMOTE_TAG_SPECIFIC${NC}"
+        echo -e "${GREEN}- $REMOTE_TAG_LATEST${NC}"
+        
+        echo -e "${YELLOW}提示: 使用以下命令推送镜像到仓库:${NC}"
+        echo -e "${BLUE}docker push $REMOTE_TAG_SPECIFIC${NC}"
+        echo -e "${BLUE}docker push $REMOTE_TAG_LATEST${NC}"
+    fi
+    
+    echo -e "${GREEN}镜像构建完成: ${NC}"
+    echo -e "${GREEN}- supabase-login-ui:$CURRENT_VERSION${NC}"
+    echo -e "${GREEN}- supabase-login-ui:latest${NC}"
+}
+
+# 运行Docker容器
 run_container() {
-    echo "=== 开始运行版本: $VERSION ==="
+    echo -e "${BLUE}开始运行 supabase-login-ui:$VERSION 容器...${NC}"
+    check_env_file
     
-    check_docker
-    load_env
-
-    # 检查镜像是否存在
-    if ! docker images $IMAGE_NAME:$VERSION | grep -q $VERSION; then
-        echo "错误: 镜像 $IMAGE_NAME:$VERSION 不存在"
-        echo "请先运行 $0 build $VERSION 构建镜像"
-        exit 1
+    # 加载环境变量
+    export $(grep -v '^#' .env | xargs)
+    
+    # 停止并移除已存在的容器
+    if docker ps -a | grep -q supabase-login-ui; then
+        echo -e "${YELLOW}发现已存在的容器，正在停止并移除...${NC}"
+        docker stop supabase-login-ui || true
+        docker rm supabase-login-ui || true
     fi
-
-    # 检查是否有旧容器运行
-    if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
-        echo "停止并移除现有容器..."
-        docker stop $CONTAINER_NAME
-        docker rm $CONTAINER_NAME
+    
+    # 创建网络(如果不存在)
+    if ! docker network ls | grep -q supabase-network; then
+        echo "创建 Docker 网络: supabase-network"
+        docker network create supabase-network
     fi
-
-    echo "启动容器..."
+    
+    # 运行容器
+    echo -e "${BLUE}启动容器...${NC}"
     docker run -d \
-      --name $CONTAINER_NAME \
-      -p ${PORT}:3000 \
-      -e NODE_ENV=production \
-      -v $(pwd)/logs:/app/logs \
-      $IMAGE_NAME:$VERSION
-
-    # 检查容器是否成功启动
-    if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
-        echo "=== 容器启动成功! ==="
-        echo "应用正在运行: http://localhost:$PORT"
-        echo "版本信息: $VERSION"
-
-        # 显示容器日志
-        echo "容器日志:"
-        docker logs $CONTAINER_NAME
-    else
-        echo "错误: 容器未能成功启动"
-        echo "请检查日志获取更多信息:"
-        echo "docker logs $CONTAINER_NAME"
+        --name supabase-login-ui \
+        --restart always \
+        --network supabase-network \
+        -p ${PORT:-3000}:3000 \
+        -e NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_PUBLIC_URL \
+        -e NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY \
+        -e NEXT_PUBLIC_SITE_URL=$SITE_URL \
+        -e NEXT_PUBLIC_AUTH_GITHUB_ENABLED=$GOTRUE_EXTERNAL_GITHUB_ENABLED \
+        -e NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=$GOTRUE_EXTERNAL_GOOGLE_ENABLED \
+        -e APP_VERSION=$VERSION \
+        -v ./logs:/app/logs \
+        supabase-login-ui:$VERSION
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}容器启动失败!${NC}"
         exit 1
     fi
+    
+    echo -e "${GREEN}容器已启动: supabase-login-ui${NC}"
+    echo -e "访问地址: ${BLUE}http://localhost:${PORT:-3000}${NC}"
 }
 
-# 导出镜像
+# 导出Docker镜像
 export_image() {
-    echo "=== 开始导出镜像: $IMAGE_NAME:$VERSION ==="
+    echo -e "${BLUE}开始导出 supabase-login-ui:$VERSION 镜像...${NC}"
     
-    check_docker
-
     # 检查镜像是否存在
-    if ! docker images $IMAGE_NAME:$VERSION | grep -q $VERSION; then
-        echo "错误: 镜像 $IMAGE_NAME:$VERSION 不存在"
-        echo "请先运行 $0 build $VERSION 构建镜像"
+    if ! docker images | grep -q "supabase-login-ui" | grep -q "$VERSION"; then
+        echo -e "${RED}错误: 镜像 supabase-login-ui:$VERSION 不存在，请先构建镜像${NC}"
         exit 1
     fi
-
-    OUTPUT_FILE="$IMAGE_NAME-$VERSION.tar"
+    
+    # 创建导出目录
+    EXPORT_DIR="./docker-exports"
+    mkdir -p $EXPORT_DIR
     
     # 导出镜像
-    echo "导出镜像到文件: $OUTPUT_FILE"
-    docker save -o $OUTPUT_FILE $IMAGE_NAME:$VERSION
-
-    # 检查导出是否成功
-    if [ $? -eq 0 ] && [ -f "$OUTPUT_FILE" ]; then
-        # 计算文件大小
-        FILE_SIZE=$(du -h $OUTPUT_FILE | cut -f1)
-        echo "=== 导出成功! ==="
-        echo "文件大小: $FILE_SIZE"
-        echo "文件路径: $(pwd)/$OUTPUT_FILE"
-        echo ""
-        echo "在目标机器上使用以下命令加载镜像:"
-        echo "  docker load -i $OUTPUT_FILE"
-        echo "  docker run -d --name $CONTAINER_NAME -p 3000:3000 $IMAGE_NAME:$VERSION"
-    else
-        echo "错误: 导出失败"
+    EXPORT_FILE="$EXPORT_DIR/supabase-login-ui-$VERSION.tar"
+    echo -e "${BLUE}正在导出到 $EXPORT_FILE ...${NC}"
+    docker save supabase-login-ui:$VERSION -o $EXPORT_FILE
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}导出失败!${NC}"
         exit 1
     fi
+    
+    echo -e "${GREEN}镜像已成功导出: $EXPORT_FILE${NC}"
+    echo -e "${YELLOW}提示: 在目标服务器上使用以下命令加载镜像:${NC}"
+    echo -e "${BLUE}docker load -i $EXPORT_FILE${NC}"
+}
+
+# 登录到Docker镜像仓库
+login_registry() {
+    check_env_file
+    
+    # 加载环境变量
+    export $(grep -v '^#' .env | xargs)
+    
+    # 如果提供了仓库地址参数，则使用参数值
+    REGISTRY=${1:-$DOCKER_REGISTRY}
+    
+    if [ -z "$REGISTRY" ]; then
+        echo -e "${YELLOW}未指定仓库地址，将使用默认的Docker Hub${NC}"
+        REGISTRY="docker.io"
+    fi
+    
+    echo -e "${BLUE}正在登录到Docker镜像仓库: $REGISTRY${NC}"
+    
+    # 检查凭据是否在环境变量中存在
+    if [ -n "$DOCKER_USERNAME" ] && [ -n "$DOCKER_PASSWORD" ]; then
+        echo -e "${BLUE}使用环境变量中的凭据登录${NC}"
+        echo "$DOCKER_PASSWORD" | docker login $REGISTRY -u "$DOCKER_USERNAME" --password-stdin
+    else
+        echo -e "${YELLOW}环境变量中未找到Docker凭据，将进入交互式登录${NC}"
+        docker login $REGISTRY
+    fi
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}登录失败!${NC}"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}登录成功${NC}"
+}
+
+# 推送镜像到仓库
+push_image() {
+    check_env_file
+    
+    # 加载环境变量
+    export $(grep -v '^#' .env | xargs)
+    
+    # 检查必要的环境变量
+    if [ -z "$DOCKER_REGISTRY" ] || [ -z "$DOCKER_NAMESPACE" ] || [ -z "$DOCKER_REPOSITORY" ]; then
+        echo -e "${RED}错误: 缺少镜像仓库配置，请检查.env文件${NC}"
+        echo -e "${YELLOW}需要设置: DOCKER_REGISTRY, DOCKER_NAMESPACE, DOCKER_REPOSITORY${NC}"
+        exit 1
+    fi
+    
+    # 检查镜像是否存在
+    if ! docker images | grep -q "supabase-login-ui" | grep -q "$VERSION"; then
+        echo -e "${RED}错误: 镜像 supabase-login-ui:$VERSION 不存在，请先构建镜像${NC}"
+        exit 1
+    fi
+    
+    # 构建远程镜像标签
+    REMOTE_TAG="$DOCKER_REGISTRY/$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:$VERSION"
+    
+    echo -e "${BLUE}正在标记镜像: $REMOTE_TAG${NC}"
+    docker tag supabase-login-ui:$VERSION $REMOTE_TAG
+    
+    echo -e "${BLUE}正在推送镜像到仓库...${NC}"
+    docker push $REMOTE_TAG
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}推送失败!${NC}"
+        exit 1
+    fi
+    
+    # 如果版本是latest，同时也推送特定版本
+    if [ "$VERSION" = "latest" ]; then
+        TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+        CURRENT_VERSION="${APP_VERSION}.${TIMESTAMP}"
+        REMOTE_TAG_SPECIFIC="$DOCKER_REGISTRY/$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:$CURRENT_VERSION"
+        
+        echo -e "${BLUE}同时推送时间戳版本: $REMOTE_TAG_SPECIFIC${NC}"
+        docker tag supabase-login-ui:latest $REMOTE_TAG_SPECIFIC
+        docker push $REMOTE_TAG_SPECIFIC
+    fi
+    
+    echo -e "${GREEN}镜像已成功推送: $REMOTE_TAG${NC}"
+}
+
+# 从仓库拉取镜像
+pull_image() {
+    check_env_file
+    
+    # 加载环境变量
+    export $(grep -v '^#' .env | xargs)
+    
+    # 检查必要的环境变量
+    if [ -z "$DOCKER_REGISTRY" ] || [ -z "$DOCKER_NAMESPACE" ] || [ -z "$DOCKER_REPOSITORY" ]; then
+        echo -e "${RED}错误: 缺少镜像仓库配置，请检查.env文件${NC}"
+        echo -e "${YELLOW}需要设置: DOCKER_REGISTRY, DOCKER_NAMESPACE, DOCKER_REPOSITORY${NC}"
+        exit 1
+    fi
+    
+    # 构建远程镜像标签
+    REMOTE_TAG="$DOCKER_REGISTRY/$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:$VERSION"
+    
+    echo -e "${BLUE}正在从仓库拉取镜像: $REMOTE_TAG${NC}"
+    docker pull $REMOTE_TAG
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}拉取失败!${NC}"
+        exit 1
+    fi
+    
+    echo -e "${BLUE}正在标记镜像为本地标签: supabase-login-ui:$VERSION${NC}"
+    docker tag $REMOTE_TAG supabase-login-ui:$VERSION
+    
+    echo -e "${GREEN}镜像已成功拉取: supabase-login-ui:$VERSION${NC}"
 }
 
 # 主函数
 main() {
-    # 设置权限
-    chmod +x *.sh 2>/dev/null || true
-    
-    # 检查参数
-    if [ $# -eq 0 ]; then
-        show_help
-        exit 0
-    fi
-
-    # 检查命令是否有效
-    if ! is_valid_command "$1"; then
-        echo "错误: 无效的命令 '$1'"
+    # 检查命令参数
+    if [ $# -lt 1 ]; then
         show_help
         exit 1
     fi
-
-    # 处理命令
-    case "$1" in
+    
+    COMMAND=$1
+    shift
+    VERSION=${1:-latest}
+    
+    case $COMMAND in
         build)
             build_image
+            ;;
+        buildlatest)
+            build_latest
             ;;
         run)
             run_container
@@ -264,11 +356,25 @@ main() {
         export)
             export_image
             ;;
-        help|*)
+        login)
+            login_registry $1
+            ;;
+        push)
+            push_image
+            ;;
+        pull)
+            pull_image
+            ;;
+        help)
             show_help
+            ;;
+        *)
+            echo -e "${RED}错误: 未知命令 '$COMMAND'${NC}"
+            show_help
+            exit 1
             ;;
     esac
 }
 
-# 运行主函数
+# 执行主函数
 main "$@" 
