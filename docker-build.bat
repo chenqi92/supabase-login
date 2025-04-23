@@ -119,6 +119,7 @@ docker buildx build ^
     --platform linux/amd64,linux/arm64,linux/arm/v7,linux/ppc64le,linux/s390x ^
     --build-arg NEXT_PUBLIC_SUPABASE_URL=%SUPABASE_PUBLIC_URL% ^
     --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=%ANON_KEY% ^
+    --build-arg SUPABASE_SERVICE_ROLE_KEY=%SERVICE_ROLE_KEY% ^
     --build-arg NEXT_PUBLIC_SITE_URL=%SITE_URL% ^
     --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=%GOTRUE_EXTERNAL_GITHUB_ENABLED% ^
     --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=%GOTRUE_EXTERNAL_GOOGLE_ENABLED% ^
@@ -173,6 +174,7 @@ echo %YELLOW%注意: 本地构建仅包含当前平台架构%NC%
 docker build ^
     --build-arg NEXT_PUBLIC_SUPABASE_URL=%SUPABASE_PUBLIC_URL% ^
     --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=%ANON_KEY% ^
+    --build-arg SUPABASE_SERVICE_ROLE_KEY=%SERVICE_ROLE_KEY% ^
     --build-arg NEXT_PUBLIC_SITE_URL=%SITE_URL% ^
     --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=%GOTRUE_EXTERNAL_GITHUB_ENABLED% ^
     --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=%GOTRUE_EXTERNAL_GOOGLE_ENABLED% ^
@@ -207,6 +209,7 @@ if defined DOCKER_REGISTRY if defined DOCKER_NAMESPACE if defined DOCKER_REPOSIT
             --platform linux/amd64,linux/arm64,linux/arm/v7,linux/ppc64le,linux/s390x ^
             --build-arg NEXT_PUBLIC_SUPABASE_URL=%SUPABASE_PUBLIC_URL% ^
             --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=%ANON_KEY% ^
+            --build-arg SUPABASE_SERVICE_ROLE_KEY=%SERVICE_ROLE_KEY% ^
             --build-arg NEXT_PUBLIC_SITE_URL=%SITE_URL% ^
             --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=%GOTRUE_EXTERNAL_GITHUB_ENABLED% ^
             --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=%GOTRUE_EXTERNAL_GOOGLE_ENABLED% ^
@@ -405,6 +408,7 @@ docker buildx build ^
     --platform linux/amd64,linux/arm64,linux/arm/v7,linux/ppc64le,linux/s390x ^
     --build-arg NEXT_PUBLIC_SUPABASE_URL=%SUPABASE_PUBLIC_URL% ^
     --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=%ANON_KEY% ^
+    --build-arg SUPABASE_SERVICE_ROLE_KEY=%SERVICE_ROLE_KEY% ^
     --build-arg NEXT_PUBLIC_SITE_URL=%SITE_URL% ^
     --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=%GOTRUE_EXTERNAL_GITHUB_ENABLED% ^
     --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=%GOTRUE_EXTERNAL_GOOGLE_ENABLED% ^
@@ -429,6 +433,7 @@ if "%VERSION%"=="latest" (
         --platform linux/amd64,linux/arm64,linux/arm/v7,linux/ppc64le,linux/s390x ^
         --build-arg NEXT_PUBLIC_SUPABASE_URL=%SUPABASE_PUBLIC_URL% ^
         --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=%ANON_KEY% ^
+        --build-arg SUPABASE_SERVICE_ROLE_KEY=%SERVICE_ROLE_KEY% ^
         --build-arg NEXT_PUBLIC_SITE_URL=%SITE_URL% ^
         --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=%GOTRUE_EXTERNAL_GITHUB_ENABLED% ^
         --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=%GOTRUE_EXTERNAL_GOOGLE_ENABLED% ^
@@ -673,6 +678,7 @@ docker buildx build ^
     --platform %DOCKER_PLATFORMS% ^
     --build-arg NEXT_PUBLIC_SUPABASE_URL=%SUPABASE_PUBLIC_URL% ^
     --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=%ANON_KEY% ^
+    --build-arg SUPABASE_SERVICE_ROLE_KEY=%SERVICE_ROLE_KEY% ^
     --build-arg NEXT_PUBLIC_SITE_URL=%SITE_URL% ^
     --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=%GOTRUE_EXTERNAL_GITHUB_ENABLED% ^
     --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=%GOTRUE_EXTERNAL_GOOGLE_ENABLED% ^

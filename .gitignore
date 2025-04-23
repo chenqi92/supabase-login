@@ -46,3 +46,4 @@ logs
 
 # docker
 docker-compose.override.yml
+other/*

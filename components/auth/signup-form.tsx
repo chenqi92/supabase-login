@@ -94,7 +94,7 @@ export function SignupForm() {
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `https://database.allbs.cn/login/auth/v1/callback`,
         data: {
           username, // 将用户名存储在用户元数据中
         }
@@ -138,7 +138,7 @@ export function SignupForm() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'github',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `https://database.allbs.cn/login/auth/v1/callback`,
       },
     });
 
@@ -155,7 +155,7 @@ export function SignupForm() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `https://database.allbs.cn/login/auth/v1/callback`,
       },
     });
 

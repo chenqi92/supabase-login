@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { GithubIcon } from "lucide-react";
+import { GithubIcon, ShieldIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -95,7 +95,7 @@ export function LoginForm() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'github',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `https://database.allbs.cn/login/auth/v1/callback`,
       },
     });
 
@@ -112,7 +112,7 @@ export function LoginForm() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `https://database.allbs.cn/login/auth/v1/callback`,
       },
     });
 
@@ -216,6 +216,31 @@ export function LoginForm() {
               {t("auth.google")}
             </Button>
           )}
+        </div>
+        
+        {/* 超级管理员入口 */}
+        <div className="relative mt-6">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-background px-2 text-muted-foreground">
+              管理选项
+            </span>
+          </div>
+        </div>
+        
+        <div className="flex justify-center">
+          <Link href="/admin">
+            <Button
+              variant="outline"
+              type="button"
+              className="flex gap-2 text-red-600 border-red-200 hover:bg-red-50"
+            >
+              <ShieldIcon className="h-4 w-4" />
+              创建超级管理员
+            </Button>
+          </Link>
         </div>
       </div>
     </div>

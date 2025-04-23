@@ -13,6 +13,10 @@ export async function GET(request: NextRequest) {
     await supabase.auth.exchangeCodeForSession(code);
   }
 
+  // 确保baseUrl包含/login前缀
+  const baseUrl = `${requestUrl.origin}/login`;
+  const redirectPath = next === '/' ? baseUrl : `${baseUrl}${next}`;
+  
   // URL to redirect to after sign in process completes
-  return NextResponse.redirect(`${requestUrl.origin}${next}`);
+  return NextResponse.redirect(redirectPath);
 } 
