@@ -1,17 +1,15 @@
 @echo off
 chcp 65001 >nul
-:: 设置UTF-8编码，解决中文显示问题
-:: 设置控制台字体为支持中文的字体
-reg add "HKEY_CURRENT_USER\Console" /v "FaceName" /t REG_SZ /d "NSimSun" /f > nul 2>&1
+:: Set UTF-8 encoding
 
-:: 颜色定义
+:: Color definitions
 set RED=[91m
 set GREEN=[92m
 set YELLOW=[93m
 set BLUE=[94m
 set NC=[0m
 
-:: 解析命令参数
+:: Parse command parameters
 set COMMAND=%1
 set VERSION=%2
 
@@ -19,11 +17,11 @@ if "%VERSION%"=="" (
     set VERSION=latest
 )
 
-:: 显示帮助信息
+:: Display help information
 if "%COMMAND%"=="" goto :help
 if /i "%COMMAND%"=="help" goto :help
 
-:: 执行对应的命令
+:: Execute corresponding command
 if /i "%COMMAND%"=="build" goto :build
 if /i "%COMMAND%"=="run" goto :run
 if /i "%COMMAND%"=="export" goto :export
@@ -31,8 +29,9 @@ if /i "%COMMAND%"=="login" goto :login
 if /i "%COMMAND%"=="push" goto :push
 if /i "%COMMAND%"=="pull" goto :pull
 if /i "%COMMAND%"=="buildlatest" goto :buildlatest
+if /i "%COMMAND%"=="buildmulti" goto :buildmulti
 
-echo %RED%错误: 未知命令 '%COMMAND%'%NC%
+echo %RED%Error: Unknown command '%COMMAND%'%NC%
 goto :help
 
 :help
@@ -42,6 +41,7 @@ echo.
 echo 命令:
 echo   build [版本号]    构建Docker镜像
 echo   buildlatest       构建并标记为latest版本镜像
+echo   buildmulti [版本] 构建多架构镜像并推送到仓库(适用于所有平台)
 echo   run [版本号]      运行Docker容器
 echo   export [版本号]   导出Docker镜像为tar文件
 echo   login [仓库地址]  登录到Docker镜像仓库
@@ -52,9 +52,10 @@ echo.
 echo 示例:
 echo   %0 build 1.0.0   构建版本1.0.0的镜像
 echo   %0 buildlatest   构建并标记为latest版本镜像
+echo   %0 buildmulti    构建多架构镜像并推送(适用于所有平台)
 echo   %0 run 1.0.0     运行版本1.0.0的容器
 echo   %0 export 1.0.0  导出版本1.0.0的镜像
-echo   %0 login registry.cn-hangzhou.aliyuncs.com  登录到阿里云镜像仓库
+echo   %0 login docker.io  登录到Docker Hub官方仓库
 echo   %0 push 1.0.0    推送1.0.0版本镜像到仓库
 echo   %0 pull 1.0.0    从仓库拉取1.0.0版本镜像
 echo.
@@ -102,22 +103,29 @@ for /f "tokens=1,* delims==" %%a in (.env) do (
     )
 )
 
+:: 创建buildx构建器（如果不存在）
+echo %BLUE%设置多架构构建环境...%NC%
+docker buildx create --use --name multiarch-builder 2>nul || echo 构建器已存在
+
 :: 构建镜像
-docker build ^
+echo %BLUE%开始多架构构建(linux/amd64,linux/arm64)...%NC%
+docker buildx build ^
+    --platform linux/amd64,linux/arm64 ^
     --build-arg NEXT_PUBLIC_SUPABASE_URL=%SUPABASE_PUBLIC_URL% ^
     --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=%ANON_KEY% ^
     --build-arg NEXT_PUBLIC_SITE_URL=%SITE_URL% ^
     --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=%GOTRUE_EXTERNAL_GITHUB_ENABLED% ^
     --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=%GOTRUE_EXTERNAL_GOOGLE_ENABLED% ^
     --build-arg APP_VERSION=%VERSION% ^
-    -t supabase-login-ui:%VERSION% .
+    -t supabase-login-ui:%VERSION% ^
+    --load .
 
 if %ERRORLEVEL% neq 0 (
     echo %RED%构建失败!%NC%
     exit /b 1
 )
 
-echo %GREEN%镜像构建完成: supabase-login-ui:%VERSION%%NC%
+echo %GREEN%多架构镜像构建完成: supabase-login-ui:%VERSION%%NC%
 goto :eof
 
 :buildlatest
@@ -134,13 +142,28 @@ for /f "tokens=1,* delims==" %%a in (.env) do (
     )
 )
 
+:: 确保APP_VERSION有值
+if "%APP_VERSION%"=="" (
+    set "APP_VERSION=1.0.0"
+)
+
 :: 获取当前日期时间作为版本号
 for /f "tokens=2 delims==" %%a in ('wmic OS Get localdatetime /value') do set "dt=%%a"
 set "TIMESTAMP=%dt:~0,8%-%dt:~8,6%"
 set "CURRENT_VERSION=%APP_VERSION%.%TIMESTAMP%"
 
+:: 检查版本号是否有效
+echo %BLUE%使用版本号: %CURRENT_VERSION%%NC%
+
+:: 创建buildx构建器（如果不存在）
+echo %BLUE%设置多架构构建环境...%NC%
+docker buildx create --use --name multiarch-builder 2>nul || echo 构建器已存在
+
 :: 构建镜像 - 同时标记为特定版本和latest
-echo %BLUE%正在构建并标记镜像...%NC%
+echo %BLUE%正在构建镜像(仅当前平台)...%NC%
+echo %YELLOW%注意: 本地构建仅包含当前平台架构%NC%
+
+:: 使用普通 docker build 命令构建单一架构镜像
 docker build ^
     --build-arg NEXT_PUBLIC_SUPABASE_URL=%SUPABASE_PUBLIC_URL% ^
     --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=%ANON_KEY% ^
@@ -169,9 +192,34 @@ if defined DOCKER_REGISTRY if defined DOCKER_NAMESPACE if defined DOCKER_REPOSIT
     echo %GREEN%- %REMOTE_TAG_SPECIFIC%%NC%
     echo %GREEN%- %REMOTE_TAG_LATEST%%NC%
     
-    echo %YELLOW%提示: 使用以下命令推送镜像到仓库:%NC%
-    echo %BLUE%docker push %REMOTE_TAG_SPECIFIC%%NC%
-    echo %BLUE%docker push %REMOTE_TAG_LATEST%%NC%
+    echo %YELLOW%是否要推送多架构镜像到仓库? [y/N]%NC%
+    set /p push_answer=
+    if /i "%push_answer%"=="y" (
+        echo %BLUE%正在推送多架构镜像...%NC%
+        :: 重新构建并直接推送到仓库
+        docker buildx build ^
+            --platform linux/amd64,linux/arm64 ^
+            --build-arg NEXT_PUBLIC_SUPABASE_URL=%SUPABASE_PUBLIC_URL% ^
+            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=%ANON_KEY% ^
+            --build-arg NEXT_PUBLIC_SITE_URL=%SITE_URL% ^
+            --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=%GOTRUE_EXTERNAL_GITHUB_ENABLED% ^
+            --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=%GOTRUE_EXTERNAL_GOOGLE_ENABLED% ^
+            --build-arg APP_VERSION=%CURRENT_VERSION% ^
+            -t %REMOTE_TAG_SPECIFIC% ^
+            -t %REMOTE_TAG_LATEST% ^
+            --push .
+        
+        if %ERRORLEVEL% neq 0 (
+            echo %RED%多架构镜像推送失败!%NC%
+            exit /b 1
+        )
+        
+        echo %GREEN%多架构镜像已成功推送到仓库!%NC%
+    ) else (
+        echo %YELLOW%提示: 使用以下命令推送镜像到仓库:%NC%
+        echo %BLUE%docker push %REMOTE_TAG_SPECIFIC%%NC%
+        echo %BLUE%docker push %REMOTE_TAG_LATEST%%NC%
+    )
 )
 
 echo %GREEN%镜像构建完成: %NC%
@@ -334,11 +382,29 @@ if %ERRORLEVEL% neq 0 (
 :: 构建远程镜像标签
 set REMOTE_TAG=%DOCKER_REGISTRY%/%DOCKER_NAMESPACE%/%DOCKER_REPOSITORY%:%VERSION%
 
-echo %BLUE%正在标记镜像: %REMOTE_TAG%%NC%
-docker tag supabase-login-ui:%VERSION% %REMOTE_TAG%
+echo %YELLOW%确认要推送多架构镜像吗? [Y/n]%NC%
+set /p confirm=
 
-echo %BLUE%正在推送镜像到仓库...%NC%
-docker push %REMOTE_TAG%
+if /i "%confirm%"=="n" (
+    echo %YELLOW%已取消推送操作%NC%
+    goto :eof
+)
+
+:: 创建buildx构建器（如果不存在）
+echo %BLUE%设置多架构构建环境...%NC%
+docker buildx create --use --name multiarch-builder 2>nul || echo 构建器已存在
+
+echo %BLUE%正在重新构建并推送多架构镜像到仓库...%NC%
+docker buildx build ^
+    --platform linux/amd64,linux/arm64 ^
+    --build-arg NEXT_PUBLIC_SUPABASE_URL=%SUPABASE_PUBLIC_URL% ^
+    --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=%ANON_KEY% ^
+    --build-arg NEXT_PUBLIC_SITE_URL=%SITE_URL% ^
+    --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=%GOTRUE_EXTERNAL_GITHUB_ENABLED% ^
+    --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=%GOTRUE_EXTERNAL_GOOGLE_ENABLED% ^
+    --build-arg APP_VERSION=%VERSION% ^
+    -t %REMOTE_TAG% ^
+    --push .
 
 if %ERRORLEVEL% neq 0 (
     echo %RED%推送失败!%NC%
@@ -352,12 +418,20 @@ if "%VERSION%"=="latest" (
     set "CURRENT_VERSION=%APP_VERSION%.%TIMESTAMP%"
     set REMOTE_TAG_SPECIFIC=%DOCKER_REGISTRY%/%DOCKER_NAMESPACE%/%DOCKER_REPOSITORY%:%CURRENT_VERSION%
     
-    echo %BLUE%同时推送时间戳版本: %REMOTE_TAG_SPECIFIC%%NC%
-    docker tag supabase-login-ui:latest %REMOTE_TAG_SPECIFIC%
-    docker push %REMOTE_TAG_SPECIFIC%
+    echo %BLUE%同时推送时间戳版本多架构镜像: %REMOTE_TAG_SPECIFIC%%NC%
+    docker buildx build ^
+        --platform linux/amd64,linux/arm64 ^
+        --build-arg NEXT_PUBLIC_SUPABASE_URL=%SUPABASE_PUBLIC_URL% ^
+        --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=%ANON_KEY% ^
+        --build-arg NEXT_PUBLIC_SITE_URL=%SITE_URL% ^
+        --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=%GOTRUE_EXTERNAL_GITHUB_ENABLED% ^
+        --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=%GOTRUE_EXTERNAL_GOOGLE_ENABLED% ^
+        --build-arg APP_VERSION=%CURRENT_VERSION% ^
+        -t %REMOTE_TAG_SPECIFIC% ^
+        --push .
 )
 
-echo %GREEN%镜像已成功推送: %REMOTE_TAG%%NC%
+echo %GREEN%多架构镜像推送完成!%NC%
 goto :eof
 
 :pull
@@ -373,15 +447,44 @@ for /f "tokens=1,* delims==" %%a in (.env) do (
     )
 )
 
-:: 检查必要的环境变量
-if "%DOCKER_REGISTRY%"=="" goto :missing_registry_config
-if "%DOCKER_NAMESPACE%"=="" goto :missing_registry_config
-if "%DOCKER_REPOSITORY%"=="" goto :missing_registry_config
+:: 检查并设置必要的环境变量
+:: Docker仓库地址
+if "%DOCKER_REGISTRY%"=="" (
+    echo %YELLOW%未设置DOCKER_REGISTRY，将使用默认值: docker.io%NC%
+    set "DOCKER_REGISTRY=docker.io"
+)
+
+:: 获取当前登录的Docker用户名作为命名空间
+if "%DOCKER_NAMESPACE%"=="" (
+    for /f "tokens=*" %%a in ('docker info 2^>^&1 ^| findstr Username') do (
+        set "DOCKER_USERNAME=%%a"
+    )
+    set "DOCKER_USERNAME=%DOCKER_USERNAME:*: =%"
+    
+    if "%DOCKER_USERNAME%"=="" (
+        echo %YELLOW%无法自动获取Docker用户名，请手动输入您的Docker Hub用户名:%NC%
+        set /p DOCKER_USERNAME=
+    )
+    
+    echo %YELLOW%未设置DOCKER_NAMESPACE，将使用当前登录的用户名: %DOCKER_USERNAME%%NC%
+    set "DOCKER_NAMESPACE=%DOCKER_USERNAME%"
+)
+
+:: 设置仓库名称
+if "%DOCKER_REPOSITORY%"=="" (
+    echo %YELLOW%未设置DOCKER_REPOSITORY，将使用默认值: supabase-login-ui%NC%
+    set "DOCKER_REPOSITORY=supabase-login-ui"
+)
 
 :: 构建远程镜像标签
-set REMOTE_TAG=%DOCKER_REGISTRY%/%DOCKER_NAMESPACE%/%DOCKER_REPOSITORY%:%VERSION%
+if "%DOCKER_REGISTRY%"=="docker.io" (
+    set "REMOTE_TAG=%DOCKER_NAMESPACE%/%DOCKER_REPOSITORY%:%VERSION%"
+) else (
+    set "REMOTE_TAG=%DOCKER_REGISTRY%/%DOCKER_NAMESPACE%/%DOCKER_REPOSITORY%:%VERSION%"
+)
 
 echo %BLUE%正在从仓库拉取镜像: %REMOTE_TAG%%NC%
+echo %BLUE%此操作将自动选择适合当前系统架构的镜像版本%NC%
 docker pull %REMOTE_TAG%
 
 if %ERRORLEVEL% neq 0 (
@@ -399,3 +502,185 @@ goto :eof
 echo %RED%错误: 缺少镜像仓库配置，请检查.env文件%NC%
 echo %YELLOW%需要设置: DOCKER_REGISTRY, DOCKER_NAMESPACE, DOCKER_REPOSITORY%NC%
 exit /b 1
+
+:buildmulti
+echo %BLUE%Starting to build and push multi-architecture images...%NC%
+call :check_env_file
+if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+
+:: Load variables from .env file
+for /f "tokens=1,* delims==" %%a in (.env) do (
+    if not "%%a"=="" (
+        if not "%%a:~0,1%"=="#" (
+            set "%%a=%%b"
+        )
+    )
+)
+
+:: Set version increment
+if "%APP_VERSION%"=="" (
+    :: Default to next version 1.0.3, as user indicated current cloud version is 1.0.2
+    echo %BLUE%Checking cloud version...%NC%
+    set "CURRENT_VERSION=1.0.3"
+    echo %YELLOW%APP_VERSION not set, using incremented version: %CURRENT_VERSION%%NC%
+) else (
+    :: Parse current version number
+    for /f "tokens=1,2,3 delims=." %%a in ("%APP_VERSION%") do (
+        set "MAJOR=%%a"
+        set "MINOR=%%b"
+        set "PATCH=%%c"
+    )
+    
+    :: If PATCH is empty, set to 0
+    if "%PATCH%"=="" set "PATCH=0"
+    
+    :: Increment patch number
+    set /a PATCH=%PATCH%+1
+    set "CURRENT_VERSION=%MAJOR%.%MINOR%.%PATCH%"
+    echo %BLUE%Version increment: %APP_VERSION% -^> %CURRENT_VERSION%%NC%
+)
+
+:: Set default repository to docker.io
+if "%DOCKER_REGISTRY%"=="" (
+    echo %YELLOW%DOCKER_REGISTRY not set, using default: docker.io%NC%
+    set "DOCKER_REGISTRY=docker.io"
+)
+
+:: Check if already logged in to Docker
+echo %BLUE%Checking Docker login status...%NC%
+docker info 2>&1 | findstr /C:"Username:" > nul
+set "DOCKER_LOGGED_IN=%ERRORLEVEL%"
+
+if %DOCKER_LOGGED_IN% == 0 (
+    echo %GREEN%Docker login detected%NC%
+    
+    :: Get current logged-in Docker username
+    for /f "tokens=*" %%a in ('docker info 2^>^&1 ^| findstr Username') do (
+        set "DOCKER_USERNAME=%%a"
+    )
+    set "DOCKER_USERNAME=%DOCKER_USERNAME:*: =%"
+    echo %GREEN%Currently logged in as: %DOCKER_USERNAME%%NC%
+    
+    :: If namespace not set, use current logged-in username
+    if "%DOCKER_NAMESPACE%"=="" (
+        set "DOCKER_NAMESPACE=%DOCKER_USERNAME%"
+        echo %YELLOW%Using current username as namespace: %DOCKER_NAMESPACE%%NC%
+    )
+) else (
+    echo %YELLOW%No Docker login detected, logging in...%NC%
+    call :login
+    if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+    
+    :: Get username after login
+    for /f "tokens=*" %%a in ('docker info 2^>^&1 ^| findstr Username') do (
+        set "DOCKER_USERNAME=%%a"
+    )
+    set "DOCKER_USERNAME=%DOCKER_USERNAME:*: =%"
+    
+    :: If namespace not set, and login successful and username obtained
+    if "%DOCKER_NAMESPACE%"=="" if not "%DOCKER_USERNAME%"=="" (
+        set "DOCKER_NAMESPACE=%DOCKER_USERNAME%"
+        echo %YELLOW%Using current username as namespace: %DOCKER_NAMESPACE%%NC%
+    )
+)
+
+:: Check if namespace is set
+if "%DOCKER_NAMESPACE%"=="" (
+    echo %YELLOW%Namespace not set, please enter Docker Hub username:%NC%
+    set /p DOCKER_NAMESPACE=
+)
+
+:: Validate namespace is not empty
+if "%DOCKER_NAMESPACE%"=="" (
+    echo %RED%Error: Must provide namespace or username%NC%
+    exit /b 1
+)
+
+:: Clean invalid characters from namespace
+set "DOCKER_NAMESPACE=%DOCKER_NAMESPACE:/=%"
+set "DOCKER_NAMESPACE=%DOCKER_NAMESPACE:\=%"
+set "DOCKER_NAMESPACE=%DOCKER_NAMESPACE:~=%"
+set "DOCKER_NAMESPACE=%DOCKER_NAMESPACE:==%"
+
+:: Set repository name
+if "%DOCKER_REPOSITORY%"=="" (
+    echo %YELLOW%DOCKER_REPOSITORY not set, using default: supabase-login-ui%NC%
+    set "DOCKER_REPOSITORY=supabase-login-ui"
+)
+
+:: Build image tags
+if "%DOCKER_REGISTRY%"=="docker.io" (
+    set "REMOTE_TAG_SPECIFIC=%DOCKER_NAMESPACE%/%DOCKER_REPOSITORY%:%CURRENT_VERSION%"
+    set "REMOTE_TAG_LATEST=%DOCKER_NAMESPACE%/%DOCKER_REPOSITORY%:latest"
+) else (
+    set "REMOTE_TAG_SPECIFIC=%DOCKER_REGISTRY%/%DOCKER_NAMESPACE%/%DOCKER_REPOSITORY%:%CURRENT_VERSION%"
+    set "REMOTE_TAG_LATEST=%DOCKER_REGISTRY%/%DOCKER_NAMESPACE%/%DOCKER_REPOSITORY%:latest"
+)
+
+:: Create buildx builder (if it doesn't exist)
+echo %BLUE%Setting up multi-architecture build environment...%NC%
+docker buildx create --use --name multiarch-builder 2>nul || echo Builder already exists
+
+:: Description
+echo %YELLOW%This command will directly build and push multi-architecture images to the remote repository.%NC%
+echo %YELLOW%This is necessary because Docker doesn't support loading multi-architecture images locally.%NC%
+echo %YELLOW%After completion, use the pull command to get the pushed multi-architecture image:%NC%
+echo %YELLOW%  %0 pull %CURRENT_VERSION%%NC%
+
+echo %BLUE%Will use the following configuration to build and push multi-architecture images:%NC%
+echo %BLUE%- Registry: %DOCKER_REGISTRY%%NC%
+echo %BLUE%- Namespace: %DOCKER_NAMESPACE%%NC%
+echo %BLUE%- Repository: %DOCKER_REPOSITORY%%NC%
+echo %BLUE%- Image version: %CURRENT_VERSION%%NC%
+echo %BLUE%- Complete image tag: %REMOTE_TAG_SPECIFIC%%NC%
+
+echo %BLUE%Confirm building and pushing multi-architecture images? [Y/n]%NC%
+set /p confirm=
+
+if /i "%confirm%"=="n" (
+    echo %YELLOW%Operation canceled%NC%
+    goto :eof
+)
+
+:: Directly build and push multi-architecture images
+echo %BLUE%Building and pushing multi-architecture images (supporting linux/amd64,linux/arm64)...%NC%
+docker buildx build ^
+    --platform linux/amd64,linux/arm64 ^
+    --build-arg NEXT_PUBLIC_SUPABASE_URL=%SUPABASE_PUBLIC_URL% ^
+    --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=%ANON_KEY% ^
+    --build-arg NEXT_PUBLIC_SITE_URL=%SITE_URL% ^
+    --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=%GOTRUE_EXTERNAL_GITHUB_ENABLED% ^
+    --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=%GOTRUE_EXTERNAL_GOOGLE_ENABLED% ^
+    --build-arg APP_VERSION=%CURRENT_VERSION% ^
+    -t %REMOTE_TAG_SPECIFIC% ^
+    -t %REMOTE_TAG_LATEST% ^
+    --push .
+
+if %ERRORLEVEL% neq 0 (
+    echo %RED%Multi-architecture image build and push failed!%NC%
+    exit /b 1
+)
+
+:: Update APP_VERSION in .env file
+findstr /C:"APP_VERSION=" .env >nul
+if %ERRORLEVEL% == 0 (
+    :: If exists, replace
+    :: Create temporary file
+    type .env | findstr /v /C:"APP_VERSION=" > .env.tmp
+    echo APP_VERSION=%CURRENT_VERSION% >> .env.tmp
+    move /y .env.tmp .env > nul
+) else (
+    :: If not exists, add
+    echo APP_VERSION=%CURRENT_VERSION% >> .env
+)
+echo %GREEN%Updated version number in .env file: APP_VERSION=%CURRENT_VERSION%%NC%
+
+echo %GREEN%Successfully built and pushed multi-architecture images: %NC%
+echo %GREEN%- %REMOTE_TAG_SPECIFIC%%NC%
+echo %GREEN%- %REMOTE_TAG_LATEST%%NC%
+
+echo %YELLOW%Tip: Use the following commands to pull and use the multi-architecture image:%NC%
+echo %BLUE%%0 pull %CURRENT_VERSION%%NC%
+echo %BLUE%%0 run %CURRENT_VERSION%%NC%
+
+goto :eof

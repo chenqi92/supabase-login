@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   app:
-    image: registry.example.com/supabase-login-ui:${APP_VERSION:-latest}
+    image: kkape/supabase-login-ui:${APP_VERSION:-latest}
     container_name: supabase-login-ui
     ports:
       - "3110:3000"
