@@ -9,6 +9,9 @@ set YELLOW=[93m
 set BLUE=[94m
 set NC=[0m
 
+:: 默认的平台支持列表
+set DEFAULT_PLATFORMS=linux/amd64,linux/arm64,linux/arm/v7,linux/ppc64le,linux/s390x
+
 :: Parse command parameters
 set COMMAND=%1
 set VERSION=%2
@@ -83,6 +86,9 @@ if not exist .env (
         echo DOCKER_REPOSITORY=supabase-login-ui
         echo DOCKER_USERNAME=your-username
         echo DOCKER_PASSWORD=your-password
+        echo.
+        echo # 多平台支持
+        echo DOCKER_PLATFORMS=%DEFAULT_PLATFORMS%
     ) > .env
     echo %GREEN%已创建 .env 文件，请编辑其中的配置再继续%NC%
     exit /b 1
@@ -108,9 +114,9 @@ echo %BLUE%设置多架构构建环境...%NC%
 docker buildx create --use --name multiarch-builder 2>nul || echo 构建器已存在
 
 :: 构建镜像
-echo %BLUE%开始多架构构建(linux/amd64,linux/arm64)...%NC%
+echo %BLUE%开始多架构构建(linux/amd64,linux/arm64,linux/arm/v7,linux/ppc64le,linux/s390x)...%NC%
 docker buildx build ^
-    --platform linux/amd64,linux/arm64 ^
+    --platform linux/amd64,linux/arm64,linux/arm/v7,linux/ppc64le,linux/s390x ^
     --build-arg NEXT_PUBLIC_SUPABASE_URL=%SUPABASE_PUBLIC_URL% ^
     --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=%ANON_KEY% ^
     --build-arg NEXT_PUBLIC_SITE_URL=%SITE_URL% ^
@@ -198,7 +204,7 @@ if defined DOCKER_REGISTRY if defined DOCKER_NAMESPACE if defined DOCKER_REPOSIT
         echo %BLUE%正在推送多架构镜像...%NC%
         :: 重新构建并直接推送到仓库
         docker buildx build ^
-            --platform linux/amd64,linux/arm64 ^
+            --platform linux/amd64,linux/arm64,linux/arm/v7,linux/ppc64le,linux/s390x ^
             --build-arg NEXT_PUBLIC_SUPABASE_URL=%SUPABASE_PUBLIC_URL% ^
             --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=%ANON_KEY% ^
             --build-arg NEXT_PUBLIC_SITE_URL=%SITE_URL% ^
@@ -396,7 +402,7 @@ docker buildx create --use --name multiarch-builder 2>nul || echo 构建器已�
 
 echo %BLUE%正在重新构建并推送多架构镜像到仓库...%NC%
 docker buildx build ^
-    --platform linux/amd64,linux/arm64 ^
+    --platform linux/amd64,linux/arm64,linux/arm/v7,linux/ppc64le,linux/s390x ^
     --build-arg NEXT_PUBLIC_SUPABASE_URL=%SUPABASE_PUBLIC_URL% ^
     --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=%ANON_KEY% ^
     --build-arg NEXT_PUBLIC_SITE_URL=%SITE_URL% ^
@@ -420,7 +426,7 @@ if "%VERSION%"=="latest" (
     
     echo %BLUE%同时推送时间戳版本多架构镜像: %REMOTE_TAG_SPECIFIC%%NC%
     docker buildx build ^
-        --platform linux/amd64,linux/arm64 ^
+        --platform linux/amd64,linux/arm64,linux/arm/v7,linux/ppc64le,linux/s390x ^
         --build-arg NEXT_PUBLIC_SUPABASE_URL=%SUPABASE_PUBLIC_URL% ^
         --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=%ANON_KEY% ^
         --build-arg NEXT_PUBLIC_SITE_URL=%SITE_URL% ^
@@ -515,6 +521,12 @@ for /f "tokens=1,* delims==" %%a in (.env) do (
             set "%%a=%%b"
         )
     )
+)
+
+:: 获取平台配置，如果没有则使用默认值
+if "%DOCKER_PLATFORMS%"=="" (
+    set "DOCKER_PLATFORMS=%DEFAULT_PLATFORMS%"
+    echo %YELLOW%警告: 未设置DOCKER_PLATFORMS，使用默认值: %DOCKER_PLATFORMS%%NC%
 )
 
 :: Set version increment
@@ -617,9 +629,21 @@ if "%DOCKER_REGISTRY%"=="docker.io" (
     set "REMOTE_TAG_LATEST=%DOCKER_REGISTRY%/%DOCKER_NAMESPACE%/%DOCKER_REPOSITORY%:latest"
 )
 
+:: 检查buildx是否已安装并启用
+docker buildx version >nul 2>&1
+if %ERRORLEVEL% neq 0 (
+    echo %RED%错误: Docker buildx 未安装或未启用。请确保您使用的是Docker 20.10.0或更高版本。%NC%
+    echo %BLUE%提示: 可以通过执行以下命令启用buildx:%NC%
+    echo docker buildx create --name mybuilder --use
+    exit /b 1
+)
+
 :: Create buildx builder (if it doesn't exist)
 echo %BLUE%Setting up multi-architecture build environment...%NC%
 docker buildx create --use --name multiarch-builder 2>nul || echo Builder already exists
+
+:: 清理可能的缓存以避免构建错误
+docker buildx prune -f
 
 :: Description
 echo %YELLOW%This command will directly build and push multi-architecture images to the remote repository.%NC%
@@ -633,6 +657,7 @@ echo %BLUE%- Namespace: %DOCKER_NAMESPACE%%NC%
 echo %BLUE%- Repository: %DOCKER_REPOSITORY%%NC%
 echo %BLUE%- Image version: %CURRENT_VERSION%%NC%
 echo %BLUE%- Complete image tag: %REMOTE_TAG_SPECIFIC%%NC%
+echo %BLUE%- Platforms: %DOCKER_PLATFORMS%%NC%
 
 echo %BLUE%Confirm building and pushing multi-architecture images? [Y/n]%NC%
 set /p confirm=
@@ -643,9 +668,9 @@ if /i "%confirm%"=="n" (
 )
 
 :: Directly build and push multi-architecture images
-echo %BLUE%Building and pushing multi-architecture images (supporting linux/amd64,linux/arm64)...%NC%
+echo %BLUE%Building and pushing multi-architecture images (supporting %DOCKER_PLATFORMS%)...%NC%
 docker buildx build ^
-    --platform linux/amd64,linux/arm64 ^
+    --platform %DOCKER_PLATFORMS% ^
     --build-arg NEXT_PUBLIC_SUPABASE_URL=%SUPABASE_PUBLIC_URL% ^
     --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=%ANON_KEY% ^
     --build-arg NEXT_PUBLIC_SITE_URL=%SITE_URL% ^
@@ -658,6 +683,15 @@ docker buildx build ^
 
 if %ERRORLEVEL% neq 0 (
     echo %RED%Multi-architecture image build and push failed!%NC%
+    echo %YELLOW%Possible issues:%NC%
+    echo %YELLOW%1. Docker buildx not set up correctly%NC%
+    echo %YELLOW%2. Network connectivity issues%NC%
+    echo %YELLOW%3. Not enough system resources%NC%
+    echo %YELLOW%4. Docker Hub rate limits (for free accounts)%NC%
+    
+    echo %BLUE%Try with fewer platforms:%NC%
+    echo %YELLOW%Edit .env file and change DOCKER_PLATFORMS to include fewer platforms%NC%
+    echo %YELLOW%For example: DOCKER_PLATFORMS=linux/amd64,linux/arm64%NC%
     exit /b 1
 )
 

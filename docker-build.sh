@@ -10,31 +10,55 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # 无颜色
 
+# 默认值设置
+DEFAULT_REGISTRY="docker.io"
+DEFAULT_USERNAME="kkape"
+DEFAULT_VERSION="latest"
+DEFAULT_REPOSITORY="supabase-login-ui"
+DEFAULT_PLATFORMS="linux/amd64,linux/arm64"
+
+# 所有可用的平台列表
+ALL_PLATFORMS="linux/amd64,linux/arm64,linux/arm/v7,linux/ppc64le,linux/s390x"
+
+# 解析命令参数
+COMMAND=$1
+VERSION=$2
+
+if [ -z "$VERSION" ]; then
+    VERSION="latest"
+fi
+
 # 显示帮助信息
 show_help() {
     echo -e "${BLUE}Supabase 登录 UI Docker 构建工具${NC}"
     echo "用法: $0 [命令] [版本号]"
     echo ""
     echo "命令:"
-    echo "  build [版本号]    构建Docker镜像"
-    echo "  buildlatest       构建并标记为latest版本镜像"
-    echo "  buildmulti [版本] 构建多架构镜像并推送到仓库(适用于所有平台)"
-    echo "  run [版本号]      运行Docker容器"
-    echo "  export [版本号]   导出Docker镜像为tar文件"
-    echo "  login [仓库地址]  登录到Docker镜像仓库"
-    echo "  push [版本号]     推送镜像到仓库"
-    echo "  pull [版本号]     从仓库拉取镜像"
-    echo "  help             显示此帮助信息"
+    echo "  build [版本号]      构建Docker镜像"
+    echo "  buildlatest         构建并标记为latest版本镜像"
+    echo "  buildmulti [版本]   构建多架构镜像并推送到仓库(仅支持SWC兼容平台)"
+    echo "  buildall [版本]     构建全部架构镜像并推送(包含不兼容平台，较慢)"
+    echo "  run [版本号]        运行Docker容器"
+    echo "  export [版本号]     导出Docker镜像为tar文件"
+    echo "  login [仓库地址]    登录到Docker镜像仓库"
+    echo "  push [版本号]       推送镜像到仓库"
+    echo "  pull [版本号]       从仓库拉取镜像"
+    echo "  help               显示此帮助信息"
+    echo ""
+    echo "注意:"
+    echo "  - buildmulti 仅构建支持Next.js SWC编译器的平台: amd64, arm64"
+    echo "  - buildall 构建所有平台，但对于不支持SWC的平台会使用Babel，构建较慢"
     echo ""
     echo "示例:"
-    echo "  $0 build 1.0.0   构建版本1.0.0的镜像"
+    echo "  $0 build 1.0.0     构建版本1.0.0的镜像"
     echo "  $0 buildlatest   构建并标记为latest版本镜像"
-    echo "  $0 buildmulti    构建多架构镜像并推送(适用于所有平台)"
-    echo "  $0 run 1.0.0     运行版本1.0.0的容器"
-    echo "  $0 export 1.0.0  导出版本1.0.0的镜像"
+    echo "  $0 buildmulti 1.0.0 构建多架构镜像并推送(仅amd64, arm64)"
+    echo "  $0 buildall 1.0.0  构建全部架构镜像并推送"
+    echo "  $0 run 1.0.0       运行版本1.0.0的容器"
+    echo "  $0 export 1.0.0    导出版本1.0.0的镜像"
     echo "  $0 login docker.io  登录到Docker Hub官方仓库"
-    echo "  $0 push 1.0.0    推送1.0.0版本镜像到仓库"
-    echo "  $0 pull 1.0.0    从仓库拉取1.0.0版本镜像"
+    echo "  $0 push 1.0.0       推送1.0.0版本镜像到仓库"
+    echo "  $0 pull 1.0.0       从仓库拉取1.0.0版本镜像"
     echo ""
 }
 
@@ -56,14 +80,28 @@ GOTRUE_EXTERNAL_GOOGLE_ENABLED=true
 APP_VERSION=$VERSION
 
 # Docker镜像仓库配置
-DOCKER_REGISTRY=docker.io
-DOCKER_NAMESPACE=your-namespace
-DOCKER_REPOSITORY=supabase-login-ui
-DOCKER_USERNAME=your-username
-DOCKER_PASSWORD=your-password
+DOCKER_REGISTRY=$DEFAULT_REGISTRY
+DOCKER_NAMESPACE=$DEFAULT_USERNAME
+DOCKER_REPOSITORY=$DEFAULT_REPOSITORY
+
+# 多平台支持
+DOCKER_PLATFORMS=$DEFAULT_PLATFORMS
+
+# SWC兼容平台
+SWC_COMPATIBLE_PLATFORMS=$DEFAULT_PLATFORMS
+
+# 全部平台(包括SWC不兼容的平台)
+ALL_PLATFORMS=$ALL_PLATFORMS
 EOF
         echo -e "${GREEN}已创建 .env 文件，请编辑其中的配置再继续${NC}"
         exit 1
+    fi
+}
+
+# 加载环境变量
+load_env() {
+    if [ -f .env ]; then
+        export $(grep -v '^#' .env | xargs)
     fi
 }
 
@@ -73,7 +111,13 @@ build_image() {
     check_env_file
     
     # 加载环境变量
-    export $(grep -v '^#' .env | xargs)
+    load_env
+    
+    # 设置默认平台，如果没有设置
+    if [ -z "$DOCKER_PLATFORMS" ]; then
+        DOCKER_PLATFORMS="$DEFAULT_PLATFORMS"
+        echo -e "${YELLOW}警告: 未设置DOCKER_PLATFORMS，使用默认值: ${DOCKER_PLATFORMS}${NC}"
+    fi
     
     # 创建buildx构建器（如果不存在）
     echo -e "${BLUE}设置多架构构建环境...${NC}"
@@ -107,7 +151,7 @@ build_latest() {
     check_env_file
     
     # 加载环境变量
-    export $(grep -v '^#' .env | xargs)
+    load_env
     
     # 确保APP_VERSION有值
     if [ -z "$APP_VERSION" ]; then
@@ -191,7 +235,7 @@ build_latest() {
             echo -e "${BLUE}正在推送多架构镜像...${NC}"
             # 重新构建并直接推送到仓库
             docker buildx build \
-                --platform linux/amd64,linux/arm64 \
+                --platform linux/amd64,linux/arm64,linux/arm/v7,linux/ppc64le,linux/s390x \
                 --build-arg NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_PUBLIC_URL \
                 --build-arg NEXT_PUBLIC_SITE_URL=$SITE_URL \
                 --build-arg APP_VERSION=$CURRENT_VERSION \
@@ -226,7 +270,7 @@ run_container() {
     check_env_file
     
     # 加载环境变量
-    export $(grep -v '^#' .env | xargs)
+    load_env
     
     # 停止并移除已存在的容器
     if docker ps -a | grep -q supabase-login-ui; then
@@ -332,14 +376,16 @@ get_docker_username() {
     # 先尝试从docker info获取
     CURRENT_USER=$(docker info 2>/dev/null | grep Username | awk '{print $2}')
     
-    # 如果上面的方法获取失败，询问用户输入
+    # 如果上面的方法获取失败，询问用户输入或使用默认值
     if [ -z "$CURRENT_USER" ]; then
-        echo -e "${YELLOW}未能自动获取Docker用户名，请手动输入:${NC}" >&2
-        read -r CURRENT_USER
-        
-        if [ -z "$CURRENT_USER" ]; then
-            echo -e "${RED}错误: 未提供Docker用户名${NC}" >&2
-            return 1
+        # 尝试使用环境变量中的用户名
+        if [ -n "$DOCKER_USERNAME" ] && [ "$DOCKER_USERNAME" != "your-username" ]; then
+            CURRENT_USER="$DOCKER_USERNAME"
+            echo -e "${YELLOW}使用环境变量中的用户名: $CURRENT_USER${NC}" >&2
+        else
+            # 使用默认用户名
+            CURRENT_USER="$DEFAULT_USERNAME"
+            echo -e "${YELLOW}使用默认用户名: $CURRENT_USER${NC}" >&2
         fi
     fi
     
@@ -351,8 +397,11 @@ get_docker_username() {
 login_registry() {
     check_env_file
     
+    # 从.env文件加载变量
+    load_env
+    
     # 如果提供了仓库地址参数，则使用参数值
-    REGISTRY=${1:-$DOCKER_REGISTRY}
+    REGISTRY=${1:-${DOCKER_REGISTRY:-$DEFAULT_REGISTRY}}
     
     if [ -z "$REGISTRY" ]; then
         echo -e "${YELLOW}未指定仓库地址，将使用默认的Docker Hub${NC}"
@@ -383,13 +432,12 @@ push_image() {
     check_env_file
     
     # 加载环境变量
-    export $(grep -v '^#' .env | xargs)
+    load_env
     
     # 检查必要的环境变量
     if [ -z "$DOCKER_REPOSITORY" ]; then
-        echo -e "${RED}错误: 缺少仓库名称配置，请检查.env文件${NC}"
-        echo -e "${YELLOW}需要设置: DOCKER_REPOSITORY${NC}"
-        exit 1
+        echo -e "${YELLOW}未设置DOCKER_REPOSITORY，将使用默认值: $DEFAULT_REPOSITORY${NC}"
+        DOCKER_REPOSITORY="$DEFAULT_REPOSITORY"
     fi
     
     # 检查镜像是否存在
@@ -435,7 +483,7 @@ push_image() {
     
     # 直接构建并推送
     docker buildx build \
-        --platform linux/amd64,linux/arm64 \
+        --platform linux/amd64,linux/arm64,linux/arm/v7,linux/ppc64le,linux/s390x \
         --build-arg NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_PUBLIC_URL \
         --build-arg NEXT_PUBLIC_SITE_URL=$SITE_URL \
         --build-arg APP_VERSION=$VERSION \
@@ -475,7 +523,7 @@ push_image() {
         echo -e "${BLUE}同时推送时间戳版本多架构镜像: $REMOTE_TAG_SPECIFIC${NC}"
         
         docker buildx build \
-            --platform linux/amd64,linux/arm64 \
+            --platform linux/amd64,linux/arm64,linux/arm/v7,linux/ppc64le,linux/s390x \
             --build-arg NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_PUBLIC_URL \
             --build-arg NEXT_PUBLIC_SITE_URL=$SITE_URL \
             --build-arg APP_VERSION=$CURRENT_VERSION \
@@ -495,156 +543,186 @@ push_image() {
     echo -e "${GREEN}多架构镜像推送完成!${NC}"
 }
 
-# 直接构建并推送多架构镜像
-buildmulti() {
-    echo -e "${BLUE}开始构建并推送多架构镜像...${NC}"
-    check_env_file
+# 构建多架构镜像 (仅SWC兼容平台)
+build_multiarch() {
+    echo -e "${BLUE}开始构建 supabase-login-ui:$VERSION 多架构镜像 (仅SWC兼容平台)...${NC}"
+    check_env_file || return 1
+    load_env
+
+    # 使用SWC兼容平台列表
+    platforms=${SWC_COMPATIBLE_PLATFORMS:-$DEFAULT_PLATFORMS}
+    echo -e "${BLUE}使用平台: $platforms${NC}"
     
-    # 加载环境变量
-    export $(grep -v '^#' .env | xargs)
-    
-    # 设置版本自增
-    if [ -z "$APP_VERSION" ]; then
-        # 检查是否存在云端版本
-        echo -e "${BLUE}正在检查云端版本...${NC}"
-        CURRENT_VERSION="1.0.3"  # 默认下一个版本为1.0.3，因为用户表示当前云端版本为1.0.2
-        echo -e "${YELLOW}未设置APP_VERSION，使用自增版本: ${CURRENT_VERSION}${NC}"
-    else
-        # 解析当前版本号
-        MAJOR=$(echo $APP_VERSION | cut -d. -f1)
-        MINOR=$(echo $APP_VERSION | cut -d. -f2)
-        PATCH=$(echo $APP_VERSION | cut -d. -f3 2>/dev/null || echo "0")
-        
-        # 增加修订号
-        PATCH=$((PATCH + 1))
-        CURRENT_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-        echo -e "${BLUE}版本自增: ${APP_VERSION} -> ${CURRENT_VERSION}${NC}"
-    fi
-    
-    # 设置默认仓库为docker.io
-    if [ -z "$DOCKER_REGISTRY" ]; then
-        echo -e "${YELLOW}未设置DOCKER_REGISTRY，将使用默认值: docker.io${NC}"
-        DOCKER_REGISTRY="docker.io"
-    fi
-    
-    # 检查是否已登录Docker
-    echo -e "${BLUE}检查Docker登录状态...${NC}"
-    DOCKER_USERNAME=$(docker info 2>/dev/null | grep Username | awk '{print $2}')
-    
-    if [ -n "$DOCKER_USERNAME" ]; then
-        echo -e "${GREEN}已检测到Docker登录状态${NC}"
-        echo -e "${GREEN}当前已登录用户: ${DOCKER_USERNAME}${NC}"
-        
-        # 如果未设置命名空间，使用当前登录用户名
-        if [ -z "$DOCKER_NAMESPACE" ]; then
-            DOCKER_NAMESPACE="$DOCKER_USERNAME"
-            echo -e "${YELLOW}使用当前登录用户名作为命名空间: ${DOCKER_NAMESPACE}${NC}"
-        fi
-    else
-        echo -e "${YELLOW}未检测到Docker登录状态，将进行登录${NC}"
-        login_registry ${DOCKER_REGISTRY:-docker.io}
-        
-        # 登录后重新获取用户名
-        DOCKER_USERNAME=$(docker info 2>/dev/null | grep Username | awk '{print $2}')
-        
-        # 如果未设置命名空间，且登录成功获取了用户名
-        if [ -z "$DOCKER_NAMESPACE" ] && [ -n "$DOCKER_USERNAME" ]; then
-            DOCKER_NAMESPACE="$DOCKER_USERNAME"
-            echo -e "${YELLOW}使用当前登录用户名作为命名空间: ${DOCKER_NAMESPACE}${NC}"
-        fi
-    fi
-    
-    # 检查命名空间是否设置
-    if [ -z "$DOCKER_NAMESPACE" ]; then
-        echo -e "${YELLOW}命名空间未设置，请手动输入Docker Hub用户名:${NC}"
-        read -r DOCKER_NAMESPACE
-    fi
-    
-    # 验证命名空间不为空
-    if [ -z "$DOCKER_NAMESPACE" ]; then
-        echo -e "${RED}错误: 必须提供命名空间或用户名${NC}"
-        exit 1
-    fi
-    
-    # 清理命名空间中的无效字符
-    DOCKER_NAMESPACE=$(echo "$DOCKER_NAMESPACE" | tr -d '/:~=\\')
-    
-    # 仓库名称
-    if [ -z "$DOCKER_REPOSITORY" ]; then
-        echo -e "${YELLOW}未设置DOCKER_REPOSITORY，将使用默认值: supabase-login-ui${NC}"
-        DOCKER_REPOSITORY="supabase-login-ui"
-    fi
-    
-    # 使用Docker Hub的命名格式
-    if [ "$DOCKER_REGISTRY" = "docker.io" ]; then
-        REMOTE_TAG_SPECIFIC="$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:$CURRENT_VERSION"
-        REMOTE_TAG_LATEST="$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:latest"
-    else
-        REMOTE_TAG_SPECIFIC="$DOCKER_REGISTRY/$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:$CURRENT_VERSION"
-        REMOTE_TAG_LATEST="$DOCKER_REGISTRY/$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:latest"
-    fi
-    
-    # 创建buildx构建器（如果不存在）
+    # 设置多架构构建环境
     echo -e "${BLUE}设置多架构构建环境...${NC}"
-    docker buildx create --use --name multiarch-builder 2>/dev/null || true
+    docker buildx create --name multiarch-builder --use 2>/dev/null || echo "构建器已存在"
+    docker buildx inspect --bootstrap
+
+    # 构建镜像
+    echo -e "${BLUE}开始多架构构建($platforms)...${NC}"
     
-    # 说明
-    echo -e "${YELLOW}此命令会直接构建并推送多架构镜像到远程仓库。${NC}"
-    echo -e "${YELLOW}这是因为Docker不支持在本地加载多架构镜像。${NC}"
-    echo -e "${YELLOW}完成后，请使用pull命令获取已推送的多架构镜像:${NC}"
-    echo -e "${YELLOW}  $0 pull $CURRENT_VERSION${NC}"
+    docker buildx build \
+        --platform $platforms \
+        --build-arg NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_PUBLIC_URL} \
+        --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY} \
+        --build-arg NEXT_PUBLIC_SITE_URL=${SITE_URL} \
+        --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=${GOTRUE_EXTERNAL_GITHUB_ENABLED} \
+        --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=${GOTRUE_EXTERNAL_GOOGLE_ENABLED} \
+        --build-arg APP_VERSION=${VERSION} \
+        -t supabase-login-ui:${VERSION} \
+        --output "type=image,push=false" .
+
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}构建失败!${NC}"
+        echo -e "${YELLOW}错误排查建议:${NC}"
+        echo "1. 检查Docker buildx是否正确安装"
+        echo "2. 尝试使用更少的目标平台架构"
+        echo "3. 检查网络连接情况"
+        return 1
+    fi
+
+    echo -e "${GREEN}多架构镜像构建完成: supabase-login-ui:$VERSION${NC}"
+}
+
+# 构建全部架构镜像 (包含SWC不兼容平台)
+build_all_arch() {
+    echo -e "${BLUE}开始构建 supabase-login-ui:$VERSION 全部架构镜像...${NC}"
+    echo -e "${YELLOW}警告: 这将包括不支持Next.js SWC编译器的平台，构建将较慢${NC}"
+    check_env_file || return 1
+    load_env
     
-    # 显示将使用的配置
-    echo -e "${BLUE}将使用以下配置构建并推送多架构镜像:${NC}"
-    echo -e "${BLUE}- 仓库地址: ${DOCKER_REGISTRY}${NC}"
-    echo -e "${BLUE}- 命名空间: ${DOCKER_NAMESPACE}${NC}"
-    echo -e "${BLUE}- 仓库名称: ${DOCKER_REPOSITORY}${NC}"
-    echo -e "${BLUE}- 镜像版本: ${CURRENT_VERSION}${NC}"
-    echo -e "${BLUE}- 完整镜像标签: ${REMOTE_TAG_SPECIFIC}${NC}"
+    # 使用全部平台列表
+    platforms=${ALL_PLATFORMS}
+    echo -e "${BLUE}使用所有平台: $platforms${NC}"
     
-    echo -e "${BLUE}确认要构建并推送多架构镜像？[Y/n]${NC}"
+    # 设置多架构构建环境
+    echo -e "${BLUE}设置多架构构建环境...${NC}"
+    docker buildx create --name multiarch-builder --use 2>/dev/null || echo "构建器已存在"
+    docker buildx inspect --bootstrap
+    
+    # 清理可能的缓存
+    docker buildx prune -f
+    
+    echo -e "${YELLOW}确认要构建所有架构(包括不支持SWC的架构)吗? [Y/n]${NC}"
     read -r confirm
+    
     if [[ "$confirm" =~ ^[Nn]$ ]]; then
-        echo -e "${YELLOW}已取消操作${NC}"
+        echo -e "${YELLOW}已取消构建${NC}"
         return 0
     fi
     
-    # 直接构建并推送多架构镜像
-    echo -e "${BLUE}正在构建并推送多架构镜像(支持linux/amd64,linux/arm64)...${NC}"
+    # 登录到Docker仓库
+    if [ -n "$DOCKER_USERNAME" ] && [ -n "$DOCKER_PASSWORD" ]; then
+        echo -e "${BLUE}登录到Docker仓库...${NC}"
+        echo "$DOCKER_PASSWORD" | docker login "$DOCKER_REGISTRY" -u "$DOCKER_USERNAME" --password-stdin
+    else
+        echo -e "${YELLOW}未提供Docker登录凭据，如需推送请先登录${NC}"
+        docker login "$DOCKER_REGISTRY"
+    fi
+    
+    # 构建并推送
+    echo -e "${BLUE}开始构建所有架构...${NC}"
+    
+    # 构建仓库标签
+    if [ -n "$DOCKER_REGISTRY" ] && [ -n "$DOCKER_NAMESPACE" ] && [ -n "$DOCKER_REPOSITORY" ]; then
+        REMOTE_TAG_SPECIFIC="${DOCKER_REGISTRY}/${DOCKER_NAMESPACE}/${DOCKER_REPOSITORY}:${VERSION}"
+        REMOTE_TAG_LATEST="${DOCKER_REGISTRY}/${DOCKER_NAMESPACE}/${DOCKER_REPOSITORY}:latest"
+    else
+        echo -e "${RED}错误: 镜像仓库配置不完整，请检查.env文件${NC}"
+        return 1
+    fi
+    
     docker buildx build \
-        --platform linux/amd64,linux/arm64 \
-        --build-arg NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_PUBLIC_URL \
-        --build-arg NEXT_PUBLIC_SITE_URL=$SITE_URL \
-        --build-arg APP_VERSION=$CURRENT_VERSION \
-        --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY \
-        --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=$GOTRUE_EXTERNAL_GITHUB_ENABLED \
-        --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=$GOTRUE_EXTERNAL_GOOGLE_ENABLED \
-        -t $REMOTE_TAG_SPECIFIC \
-        -t $REMOTE_TAG_LATEST \
+        --platform $platforms \
+        --build-arg NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_PUBLIC_URL} \
+        --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY} \
+        --build-arg NEXT_PUBLIC_SITE_URL=${SITE_URL} \
+        --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=${GOTRUE_EXTERNAL_GITHUB_ENABLED} \
+        --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=${GOTRUE_EXTERNAL_GOOGLE_ENABLED} \
+        --build-arg APP_VERSION=${VERSION} \
+        -t ${REMOTE_TAG_SPECIFIC} \
+        -t ${REMOTE_TAG_LATEST} \
         --push .
     
     if [ $? -ne 0 ]; then
-        echo -e "${RED}多架构镜像构建并推送失败!${NC}"
-        exit 1
+        echo -e "${RED}构建并推送失败!${NC}"
+        return 1
     fi
     
-    # 更新.env文件中的APP_VERSION
-    if grep -q "^APP_VERSION=" .env; then
-        # 如果存在，则替换
-        sed -i "s/^APP_VERSION=.*/APP_VERSION=$CURRENT_VERSION/" .env
+    echo -e "${GREEN}全部架构镜像构建并推送完成:${NC}"
+    echo -e "${GREEN}- ${REMOTE_TAG_SPECIFIC}${NC}"
+    echo -e "${GREEN}- ${REMOTE_TAG_LATEST}${NC}"
+}
+
+# 构建并推送多架构镜像 (仅SWC兼容平台)
+build_and_push_multiarch() {
+    echo -e "${BLUE}开始构建并推送多架构镜像 (仅SWC兼容平台)...${NC}"
+    check_env_file || return 1
+    load_env
+    
+    # 确保版本号正确
+    CURRENT_VERSION=${VERSION}
+    if [ "$CURRENT_VERSION" == "latest" ]; then
+        if [ -n "$APP_VERSION" ]; then
+            CURRENT_VERSION="$APP_VERSION"
+        else
+            CURRENT_VERSION="1.0.0"
+        fi
+        echo -e "${YELLOW}使用版本号: $CURRENT_VERSION${NC}"
+    fi
+    
+    # 设置镜像标签
+    if [ -n "$DOCKER_REGISTRY" ] && [ -n "$DOCKER_NAMESPACE" ] && [ -n "$DOCKER_REPOSITORY" ]; then
+        REMOTE_TAG_SPECIFIC="${DOCKER_REGISTRY}/${DOCKER_NAMESPACE}/${DOCKER_REPOSITORY}:${CURRENT_VERSION}"
+        REMOTE_TAG_LATEST="${DOCKER_REGISTRY}/${DOCKER_NAMESPACE}/${DOCKER_REPOSITORY}:latest"
     else
-        # 如果不存在，则添加
-        echo "APP_VERSION=$CURRENT_VERSION" >> .env
+        echo -e "${RED}错误: 镜像仓库配置不完整，请检查.env文件${NC}"
+        return 1
     fi
-    echo -e "${GREEN}更新版本号至 .env 文件: APP_VERSION=$CURRENT_VERSION${NC}"
     
-    echo -e "${GREEN}成功构建并推送多架构镜像: ${NC}"
-    echo -e "${GREEN}- $REMOTE_TAG_SPECIFIC${NC}"
-    echo -e "${GREEN}- $REMOTE_TAG_LATEST${NC}"
+    # 设置多架构构建环境
+    echo -e "${BLUE}设置多架构构建环境...${NC}"
+    docker buildx create --name multiarch-builder --use 2>/dev/null || echo "构建器已存在"
+    docker buildx inspect --bootstrap
     
-    echo -e "${YELLOW}提示: 使用以下命令拉取并使用多架构镜像:${NC}"
-    echo -e "${BLUE}$0 pull $CURRENT_VERSION${NC}"
-    echo -e "${BLUE}$0 run $CURRENT_VERSION${NC}"
+    # 清理可能的缓存
+    docker buildx prune -f
+    
+    # 使用SWC兼容平台列表
+    platforms=${SWC_COMPATIBLE_PLATFORMS:-$DEFAULT_PLATFORMS}
+    echo -e "${BLUE}使用SWC兼容平台: $platforms${NC}"
+    echo -e "${YELLOW}目标仓库: ${REMOTE_TAG_SPECIFIC}${NC}"
+    
+    # 登录到Docker仓库
+    if [ -n "$DOCKER_USERNAME" ] && [ -n "$DOCKER_PASSWORD" ]; then
+        echo -e "${BLUE}登录到Docker仓库...${NC}"
+        echo "$DOCKER_PASSWORD" | docker login "$DOCKER_REGISTRY" -u "$DOCKER_USERNAME" --password-stdin
+    else
+        echo -e "${YELLOW}未提供Docker登录凭据，如需推送请先登录${NC}"
+        docker login "$DOCKER_REGISTRY"
+    fi
+    
+    # 构建并推送
+    docker buildx build \
+        --platform $platforms \
+        --build-arg NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_PUBLIC_URL} \
+        --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY} \
+        --build-arg NEXT_PUBLIC_SITE_URL=${SITE_URL} \
+        --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=${GOTRUE_EXTERNAL_GITHUB_ENABLED} \
+        --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=${GOTRUE_EXTERNAL_GOOGLE_ENABLED} \
+        --build-arg APP_VERSION=${CURRENT_VERSION} \
+        -t ${REMOTE_TAG_SPECIFIC} \
+        -t ${REMOTE_TAG_LATEST} \
+        --push .
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}构建并推送失败!${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}多架构镜像构建并推送完成:${NC}"
+    echo -e "${GREEN}- ${REMOTE_TAG_SPECIFIC}${NC}"
+    echo -e "${GREEN}- ${REMOTE_TAG_LATEST}${NC}"
 }
 
 # 从仓库拉取镜像
@@ -652,48 +730,37 @@ pull_image() {
     check_env_file
     
     # 加载环境变量
-    export $(grep -v '^#' .env | xargs)
+    load_env
     
     # 检查并设置必要的环境变量
-    # Docker仓库地址
     if [ -z "$DOCKER_REGISTRY" ]; then
         echo -e "${YELLOW}未设置DOCKER_REGISTRY，将使用默认值: docker.io${NC}"
         DOCKER_REGISTRY="docker.io"
     fi
     
-    # 命名空间 (通常是用户名)
     if [ -z "$DOCKER_NAMESPACE" ]; then
         # 获取当前登录的Docker用户名
-        DOCKER_USERNAME=$(docker info 2>/dev/null | grep Username | awk '{print $2}')
+        DOCKER_USERNAME=$(docker info 2>&1 | grep Username | cut -d':' -f2 | tr -d ' ')
         
         if [ -z "$DOCKER_USERNAME" ]; then
             echo -e "${YELLOW}无法自动获取Docker用户名，请手动输入您的Docker Hub用户名:${NC}"
-            read -r DOCKER_USERNAME
-            if [ -z "$DOCKER_USERNAME" ]; then
-                echo -e "${RED}错误: 未提供用户名${NC}"
-                exit 1
-            fi
+            read DOCKER_USERNAME
         fi
         
-        echo -e "${YELLOW}未设置DOCKER_NAMESPACE，将使用当前登录的用户名: ${DOCKER_USERNAME}${NC}"
-        DOCKER_NAMESPACE="$DOCKER_USERNAME"
+        echo -e "${YELLOW}未设置DOCKER_NAMESPACE，将使用当前登录的用户名: $DOCKER_USERNAME${NC}"
+        DOCKER_NAMESPACE=$DOCKER_USERNAME
     fi
     
-    # 仓库名称
     if [ -z "$DOCKER_REPOSITORY" ]; then
         echo -e "${YELLOW}未设置DOCKER_REPOSITORY，将使用默认值: supabase-login-ui${NC}"
         DOCKER_REPOSITORY="supabase-login-ui"
     fi
     
-    # 先尝试登录
-    echo -e "${BLUE}请先登录到Docker仓库${NC}"
-    login_registry ${DOCKER_REGISTRY:-docker.io}
-    
-    # 使用Docker Hub的命名格式
-    if [ "$DOCKER_REGISTRY" = "docker.io" ]; then
-        REMOTE_TAG="$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:$VERSION"
+    # 构建远程镜像标签
+    if [ "$DOCKER_REGISTRY" == "docker.io" ]; then
+        REMOTE_TAG="${DOCKER_NAMESPACE}/${DOCKER_REPOSITORY}:${VERSION}"
     else
-        REMOTE_TAG="$DOCKER_REGISTRY/$DOCKER_NAMESPACE/$DOCKER_REPOSITORY:$VERSION"
+        REMOTE_TAG="${DOCKER_REGISTRY}/${DOCKER_NAMESPACE}/${DOCKER_REPOSITORY}:${VERSION}"
     fi
     
     echo -e "${BLUE}正在从仓库拉取镜像: $REMOTE_TAG${NC}"
@@ -702,7 +769,7 @@ pull_image() {
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}拉取失败!${NC}"
-        exit 1
+        return 1
     fi
     
     echo -e "${BLUE}正在标记镜像为本地标签: supabase-login-ui:$VERSION${NC}"
@@ -721,17 +788,21 @@ main() {
     
     COMMAND=$1
     shift
-    VERSION=${1:-latest}
+    VERSION=${1:-$DEFAULT_VERSION}
     
     case $COMMAND in
         build)
-            build_image
+            build_multiarch
             ;;
         buildlatest)
-            build_latest
+            VERSION="latest"
+            build_multiarch
             ;;
         buildmulti)
-            buildmulti
+            build_and_push_multiarch
+            ;;
+        buildall)
+            build_all_arch
             ;;
         run)
             run_container
@@ -743,7 +814,7 @@ main() {
             login_registry $1
             ;;
         push)
-            push_image
+            build_and_push_multiarch
             ;;
         pull)
             pull_image
