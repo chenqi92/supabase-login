@@ -24,6 +24,34 @@ export function LoginForm() {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
 
+  // 设置 JWT Cookie 并跳转到 Studio
+  const setAuthCookieAndRedirect = async (session: any) => {
+    try {
+      // 获取访问令牌
+      const accessToken = session.access_token;
+      
+      // 调用设置 Cookie 的 API
+      const response = await fetch('/login/api/set-auth-cookie', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ token: accessToken }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('设置认证Cookie失败');
+      }
+      
+      // 跳转到 Studio
+      window.location.href = '/studio/';
+    } catch (err) {
+      console.error('设置Cookie时出错:', err);
+      setError(err instanceof Error ? err.message : '认证设置失败');
+      setIsLoading(false);
+    }
+  };
+
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -40,7 +68,7 @@ export function LoginForm() {
         return;
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: identifier,
         password,
       });
@@ -50,6 +78,9 @@ export function LoginForm() {
         setIsLoading(false);
         return;
       }
+      
+      // 设置 Cookie 并跳转
+      await setAuthCookieAndRedirect(data.session);
     } else {
       // 验证用户名格式
       if (!isValidUsername(identifier)) {
@@ -61,20 +92,20 @@ export function LoginForm() {
       // 使用用户名登录
       // Supabase 原生不支持用户名登录，需要先查询用户然后使用邮箱登录
       // 这里假设用户名存储在用户元数据中
-      const { data, error: fetchError } = await supabase
+      const { data: profileData, error: fetchError } = await supabase
         .from('profiles')
         .select('email')
         .eq('username', identifier)
         .single();
 
-      if (fetchError || !data) {
+      if (fetchError || !profileData) {
         setError(t("auth.invalid_username"));
         setIsLoading(false);
         return;
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
-        email: data.email,
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: profileData.email,
         password,
       });
 
@@ -83,19 +114,20 @@ export function LoginForm() {
         setIsLoading(false);
         return;
       }
+      
+      // 设置 Cookie 并跳转
+      await setAuthCookieAndRedirect(data.session);
     }
-
-    router.refresh();
   };
 
   const handleGithubSignIn = async () => {
     setIsLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'github',
       options: {
-        redirectTo: `https://database.allbs.cn/login/auth/v1/callback`,
+        redirectTo: `${window.location.origin}/login/auth/callback?next=/auth-success`,
       },
     });
 
@@ -109,10 +141,10 @@ export function LoginForm() {
     setIsLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `https://database.allbs.cn/login/auth/v1/callback`,
+        redirectTo: `${window.location.origin}/login/auth/callback?next=/auth-success`,
       },
     });
 

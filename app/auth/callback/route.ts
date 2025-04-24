@@ -13,10 +13,18 @@ export async function GET(request: NextRequest) {
     await supabase.auth.exchangeCodeForSession(code);
   }
 
-  // 确保baseUrl包含/login前缀
-  const baseUrl = `${requestUrl.origin}/login`;
-  const redirectPath = next === '/' ? baseUrl : `${baseUrl}${next}`;
+  // 构建重定向URL
+  let redirectUrl: string;
+  
+  // 如果是要认证成功页面，使用完整路径
+  if (next === '/auth-success') {
+    redirectUrl = `${requestUrl.origin}/login/auth-success`;
+  } else {
+    // 否则，确保baseUrl包含/login前缀
+    const baseUrl = `${requestUrl.origin}/login`;
+    redirectUrl = next === '/' ? baseUrl : `${baseUrl}${next}`;
+  }
   
   // URL to redirect to after sign in process completes
-  return NextResponse.redirect(redirectPath);
+  return NextResponse.redirect(redirectUrl);
 } 
