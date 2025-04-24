@@ -1,4 +1,4 @@
-/** @type {import('next').NextConfig} */
+0/** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone', // 为 Docker 构建优化
   reactStrictMode: true,
