@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { Auth } from "@supabase/ui";
+import { Auth } from "@supabase/auth-ui-react";
+import { ThemeSupa } from "@supabase/auth-ui-shared";
 
 import { useI18n } from "@/components/providers/i18n-provider";
 import { LanguageSwitcher } from "@/components/auth/language-switcher";
@@ -14,6 +15,12 @@ export function SignupForm() {
   const { t } = useI18n();
   
   const [error, setError] = useState<string | null>(null);
+  const [origin, setOrigin] = useState<string>("");
+
+  // 客户端初始化时设置origin
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
 
   // 监听认证状态变化
   useEffect(() => {
@@ -49,13 +56,17 @@ export function SignupForm() {
         <div className="text-sm text-destructive">{error}</div>
       )}
       <div className="grid gap-6">
-        <Auth
-          supabaseClient={supabase}
-          providers={['github', 'google']}
-          view="sign_up"
-          redirectTo={`${window.location.origin}/login/auth/callback?next=/verify-email`}
-          className="supabase-auth-ui"
-        />
+        {origin && (
+          <div className="supabase-auth-ui">
+            <Auth
+              supabaseClient={supabase}
+              appearance={{ theme: ThemeSupa }}
+              providers={['github', 'google']}
+              view="sign_up"
+              redirectTo={`${origin}/login/auth/callback?next=/verify-email`}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

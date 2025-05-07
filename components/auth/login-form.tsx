@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { Auth } from "@supabase/ui";
+import { Auth } from "@supabase/auth-ui-react";
+import { ThemeSupa } from "@supabase/auth-ui-shared";
 import Link from "next/link";
 import { ShieldIcon } from "lucide-react";
 
@@ -11,12 +12,21 @@ import { useI18n } from "@/components/providers/i18n-provider";
 import { LanguageSwitcher } from "@/components/auth/language-switcher";
 import { Button } from "@/components/ui/button";
 
+// 是否显示超级管理员入口
+const SHOW_ADMIN_ENTRY = process.env.NEXT_PUBLIC_SHOW_ADMIN_ENTRY === 'true';
+
 export function LoginForm() {
   const router = useRouter();
   const supabase = createClientComponentClient();
   const { t } = useI18n();
   
   const [error, setError] = useState<string | null>(null);
+  const [origin, setOrigin] = useState<string>("");
+
+  // 客户端初始化时设置origin
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
 
   // 设置 JWT Cookie 并跳转到 Studio
   const setAuthCookieAndRedirect = async (session: any) => {
@@ -78,38 +88,46 @@ export function LoginForm() {
         <div className="text-sm text-destructive">{error}</div>
       )}
       <div className="grid gap-6">
-        <Auth
-          supabaseClient={supabase}
-          providers={['github', 'google']}
-          view="sign_in"
-          redirectTo={`${window.location.origin}/login/auth/callback?next=/auth-success`}
-          className="supabase-auth-ui"
-        />
-        
-        {/* 超级管理员入口 */}
-        <div className="relative mt-6">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t" />
+        {origin && (
+          <div className="supabase-auth-ui">
+            <Auth
+              supabaseClient={supabase}
+              appearance={{ theme: ThemeSupa }}
+              providers={['github', 'google']}
+              view="sign_in"
+              redirectTo={`${origin}/login/auth/callback?next=/auth-success`}
+            />
           </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-background px-2 text-muted-foreground">
-              管理选项
-            </span>
-          </div>
-        </div>
+        )}
         
-        <div className="flex justify-center">
-          <Link href="/admin">
-            <Button
-              variant="outline"
-              type="button"
-              className="flex gap-2 text-red-600 border-red-200 hover:bg-red-50"
-            >
-              <ShieldIcon className="h-4 w-4" />
-              创建超级管理员
-            </Button>
-          </Link>
-        </div>
+        {/* 超级管理员入口 - 仅在环境变量启用时显示 */}
+        {SHOW_ADMIN_ENTRY && (
+          <>
+            <div className="relative mt-6">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">
+                  {t("admin.options")}
+                </span>
+              </div>
+            </div>
+            
+            <div className="flex justify-center">
+              <Link href="/admin">
+                <Button
+                  variant="outline"
+                  type="button"
+                  className="flex gap-2 text-red-600 border-red-200 hover:bg-red-50"
+                >
+                  <ShieldIcon className="h-4 w-4" />
+                  {t("admin.create_admin")}
+                </Button>
+              </Link>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

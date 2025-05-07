@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useI18n } from "@/components/providers/i18n-provider";
 import { isValidEmail, isValidPassword } from "@/lib/utils";
+import { ArrowLeft } from "lucide-react";
+import Link from "next/link";
 
 export function AdminCreateForm() {
   const { t } = useI18n();
@@ -28,10 +30,10 @@ export function AdminCreateForm() {
     
     // 验证邮箱
     if (!email) {
-      setEmailError("邮箱不能为空");
+      setEmailError(t("admin.email_required"));
       isValid = false;
     } else if (!isValidEmail(email)) {
-      setEmailError("邮箱格式无效");
+      setEmailError(t("admin.invalid_email"));
       isValid = false;
     } else {
       setEmailError(null);
@@ -39,10 +41,10 @@ export function AdminCreateForm() {
     
     // 验证密码
     if (!password) {
-      setPasswordError("密码不能为空");
+      setPasswordError(t("admin.password_required"));
       isValid = false;
     } else if (!isValidPassword(password)) {
-      setPasswordError("密码必须至少8个字符");
+      setPasswordError(t("admin.password_too_short"));
       isValid = false;
     } else {
       setPasswordError(null);
@@ -50,7 +52,7 @@ export function AdminCreateForm() {
     
     // 验证确认密码
     if (password !== confirmPassword) {
-      setConfirmPasswordError("两次密码不匹配");
+      setConfirmPasswordError(t("admin.passwords_not_match"));
       isValid = false;
     } else {
       setConfirmPasswordError(null);
@@ -88,16 +90,16 @@ export function AdminCreateForm() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || '创建管理员失败');
+        throw new Error(data.error || t("admin.create_failed"));
       }
 
       // 清空表单
       setEmail("");
       setPassword("");
       setConfirmPassword("");
-      setSuccess('超级管理员创建成功');
+      setSuccess(t("admin.create_success"));
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建管理员时发生未知错误');
+      setError(err instanceof Error ? err.message : t("admin.unknown_error"));
     } finally {
       setIsLoading(false);
     }
@@ -105,12 +107,21 @@ export function AdminCreateForm() {
 
   return (
     <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
+      {/* 返回按钮 */}
+      <div className="absolute top-4 left-4">
+        <Link href="/login">
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t("common.back")}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        </Link>
+      </div>
+      
       <div className="flex flex-col space-y-2 text-center">
         <h1 className="text-2xl font-semibold tracking-tight">
-          创建超级管理员
+          {t("admin.create_title")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          创建具有完全访问权限的超级管理员账户
+          {t("admin.create_description")}
         </p>
       </div>
       
@@ -118,7 +129,7 @@ export function AdminCreateForm() {
         <form onSubmit={handleCreateAdmin}>
           <div className="grid gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="admin-email">管理员邮箱</Label>
+              <Label htmlFor="admin-email">{t("admin.email_label")}</Label>
               <Input
                 id="admin-email"
                 placeholder="admin@example.com"
@@ -136,7 +147,7 @@ export function AdminCreateForm() {
             </div>
             
             <div className="grid gap-2">
-              <Label htmlFor="admin-password">管理员密码</Label>
+              <Label htmlFor="admin-password">{t("admin.password_label")}</Label>
               <Input
                 id="admin-password"
                 type="password"
@@ -152,7 +163,7 @@ export function AdminCreateForm() {
             </div>
             
             <div className="grid gap-2">
-              <Label htmlFor="admin-confirm-password">确认密码</Label>
+              <Label htmlFor="admin-confirm-password">{t("admin.confirm_password")}</Label>
               <Input
                 id="admin-confirm-password"
                 type="password"
@@ -175,13 +186,26 @@ export function AdminCreateForm() {
               <div className="text-sm text-green-600">{success}</div>
             )}
             
-            <Button 
-              disabled={isLoading} 
-              className="bg-red-600 hover:bg-red-700 text-white"
-              type="submit"
-            >
-              {isLoading ? "处理中..." : "创建超级管理员"}
-            </Button>
+            <div className="flex gap-4">
+              <Button 
+                disabled={isLoading} 
+                className="bg-red-600 hover:bg-red-700 text-white flex-1"
+                type="submit"
+              >
+                {isLoading ? t("common.processing") : t("admin.create_button")}
+              </Button>
+              
+              <Link href="/login" className="flex-1">
+                <Button 
+                  variant="outline" 
+                  className="w-full"
+                  type="button"
+                  disabled={isLoading}
+                >
+                  {t("common.back_to_login")}
+                </Button>
+              </Link>
+            </div>
           </div>
         </form>
       </div>

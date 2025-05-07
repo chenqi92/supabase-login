@@ -75,47 +75,56 @@
   }
 }
 
-/* Supabase UI 自定义样式 */
+/* Supabase Auth UI 自定义样式 */
 .supabase-auth-ui {
   width: 100%;
 }
 
-.supabase-auth-ui button {
+/* 自定义 Auth UI 样式 */
+.supabase-auth-ui_container {
+  width: 100%;
+}
+
+.supabase-auth-ui_button {
   background-color: hsl(var(--primary)) !important;
   color: white !important;
   border-radius: var(--radius) !important;
   font-weight: 500 !important;
 }
 
-.supabase-auth-ui button:hover {
+.supabase-auth-ui_button:hover {
   opacity: 0.9 !important;
 }
 
-.supabase-auth-ui input {
+.supabase-auth-ui_input,
+.supabase-auth-ui_container input,
+.supabase-auth-ui_ui-input,
+.supabase-auth-ui_ui-input-input {
   border-color: hsl(var(--input)) !important;
   background-color: hsl(var(--background)) !important;
   color: hsl(var(--foreground)) !important;
   border-radius: var(--radius) !important;
 }
 
-.supabase-auth-ui label {
+.supabase-auth-ui_label,
+.supabase-auth-ui_ui-label {
   color: hsl(var(--foreground)) !important;
 }
 
-.supabase-auth-ui a {
+.supabase-auth-ui_anchor {
   color: hsl(var(--primary)) !important;
 }
 
-.supabase-auth-ui .sbui-btn-social {
+.supabase-auth-ui_provider {
   border: 1px solid hsl(var(--border)) !important;
   background-color: transparent !important;
   color: hsl(var(--foreground)) !important;
 }
 
-.supabase-auth-ui .sbui-typography-text {
+.supabase-auth-ui_typography {
   color: hsl(var(--foreground)) !important;
 }
 
-.supabase-auth-ui .sbui-typography-link {
+.supabase-auth-ui_typography-link {
   color: hsl(var(--primary)) !important;
 } 

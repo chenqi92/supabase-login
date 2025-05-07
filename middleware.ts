@@ -14,7 +14,7 @@ export async function middleware(request: NextRequest) {
   // 获取当前路径
   const { pathname } = request.nextUrl;
   
-  // 如果访问根路径并且已登录，重定向到 /studio
+  // 如果访问根路径，根据登录状态重定向
   if (pathname === '/') {
     const { data: { session } } = await supabase.auth.getSession();
     
@@ -32,7 +32,7 @@ export async function middleware(request: NextRequest) {
   return response;
 }
 
-// 配置中间件仅在这些路径上运行
+// 配置中间件仅在特定路径上运行
 export const config = {
-  matcher: ['/', '/login/:path*'],
+  matcher: ['/', '/login', '/studio'],
 }; 
