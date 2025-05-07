@@ -671,14 +671,42 @@ build_and_push_multiarch() {
         echo -e "${YELLOW}使用版本号: $CURRENT_VERSION${NC}"
     fi
     
+    # 检查并设置必要的环境变量
+    if [ -z "$DOCKER_REGISTRY" ]; then
+        echo -e "${YELLOW}未设置DOCKER_REGISTRY，将使用默认值: docker.io${NC}"
+        DOCKER_REGISTRY="docker.io"
+    fi
+    
+    if [ -z "$DOCKER_NAMESPACE" ]; then
+        # 获取当前登录的Docker用户名
+        DOCKER_USERNAME=$(docker info 2>&1 | grep Username | cut -d':' -f2 | tr -d ' ')
+        
+        if [ -z "$DOCKER_USERNAME" ]; then
+            echo -e "${YELLOW}无法自动获取Docker用户名，将使用默认值: $DEFAULT_USERNAME${NC}"
+            DOCKER_NAMESPACE="$DEFAULT_USERNAME"
+        else
+            echo -e "${YELLOW}未设置DOCKER_NAMESPACE，将使用当前登录的用户名: $DOCKER_USERNAME${NC}"
+            DOCKER_NAMESPACE="$DOCKER_USERNAME"
+        fi
+    fi
+    
+    if [ -z "$DOCKER_REPOSITORY" ]; then
+        echo -e "${YELLOW}未设置DOCKER_REPOSITORY，将使用默认值: $DEFAULT_REPOSITORY${NC}"
+        DOCKER_REPOSITORY="$DEFAULT_REPOSITORY"
+    fi
+    
     # 设置镜像标签
-    if [ -n "$DOCKER_REGISTRY" ] && [ -n "$DOCKER_NAMESPACE" ] && [ -n "$DOCKER_REPOSITORY" ]; then
+    if [ "$DOCKER_REGISTRY" = "docker.io" ]; then
+        REMOTE_TAG_SPECIFIC="${DOCKER_NAMESPACE}/${DOCKER_REPOSITORY}:${CURRENT_VERSION}"
+        REMOTE_TAG_LATEST="${DOCKER_NAMESPACE}/${DOCKER_REPOSITORY}:latest"
+    else
         REMOTE_TAG_SPECIFIC="${DOCKER_REGISTRY}/${DOCKER_NAMESPACE}/${DOCKER_REPOSITORY}:${CURRENT_VERSION}"
         REMOTE_TAG_LATEST="${DOCKER_REGISTRY}/${DOCKER_NAMESPACE}/${DOCKER_REPOSITORY}:latest"
-    else
-        echo -e "${RED}错误: 镜像仓库配置不完整，请检查.env文件${NC}"
-        return 1
     fi
+    
+    echo -e "${YELLOW}将构建并推送以下标签:${NC}"
+    echo -e "${GREEN}- $REMOTE_TAG_SPECIFIC${NC}"
+    echo -e "${GREEN}- $REMOTE_TAG_LATEST${NC}"
     
     # 设置多架构构建环境
     echo -e "${BLUE}设置多架构构建环境...${NC}"
@@ -694,22 +722,25 @@ build_and_push_multiarch() {
     echo -e "${YELLOW}目标仓库: ${REMOTE_TAG_SPECIFIC}${NC}"
     
     # 登录到Docker仓库
-    if [ -n "$DOCKER_USERNAME" ] && [ -n "$DOCKER_PASSWORD" ]; then
-        echo -e "${BLUE}登录到Docker仓库...${NC}"
-        echo "$DOCKER_PASSWORD" | docker login "$DOCKER_REGISTRY" -u "$DOCKER_USERNAME" --password-stdin
-    else
-        echo -e "${YELLOW}未提供Docker登录凭据，如需推送请先登录${NC}"
-        docker login "$DOCKER_REGISTRY"
+    echo -e "${BLUE}正在登录到Docker仓库...${NC}"
+    login_registry "$DOCKER_REGISTRY"
+    
+    # 检查Supabase相关环境变量
+    if [ -z "$SUPABASE_PUBLIC_URL" ] || [ -z "$ANON_KEY" ] || [ -z "$SITE_URL" ]; then
+        echo -e "${RED}错误: Supabase配置不完整，请检查.env文件${NC}"
+        echo -e "${YELLOW}需要设置: SUPABASE_PUBLIC_URL, ANON_KEY, SITE_URL${NC}"
+        return 1
     fi
     
     # 构建并推送
+    echo -e "${BLUE}开始构建并推送多架构镜像...${NC}"
     docker buildx build \
         --platform $platforms \
         --build-arg NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_PUBLIC_URL} \
         --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY} \
         --build-arg NEXT_PUBLIC_SITE_URL=${SITE_URL} \
-        --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=${GOTRUE_EXTERNAL_GITHUB_ENABLED} \
-        --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=${GOTRUE_EXTERNAL_GOOGLE_ENABLED} \
+        --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=${GOTRUE_EXTERNAL_GITHUB_ENABLED:-true} \
+        --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=${GOTRUE_EXTERNAL_GOOGLE_ENABLED:-true} \
         --build-arg APP_VERSION=${CURRENT_VERSION} \
         -t ${REMOTE_TAG_SPECIFIC} \
         -t ${REMOTE_TAG_LATEST} \
@@ -717,6 +748,12 @@ build_and_push_multiarch() {
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}构建并推送失败!${NC}"
+        echo -e "${YELLOW}错误排查建议:${NC}"
+        echo "1. 检查Docker buildx是否正确安装"
+        echo "2. 确保已正确登录到Docker仓库"
+        echo "3. 检查网络连接"
+        echo "4. 检查目标仓库是否存在并有权限推送"
+        echo "5. 尝试使用 'docker buildx ls' 检查构建器状态"
         return 1
     fi
     
@@ -792,7 +829,7 @@ main() {
     
     case $COMMAND in
         build)
-            build_multiarch
+            build_image
             ;;
         buildlatest)
             VERSION="latest"

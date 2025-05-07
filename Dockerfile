@@ -13,8 +13,8 @@ RUN npm config set registry https://registry.npmmirror.com
 
 # 单独复制package文件 - 改进缓存利用率
 COPY package.json package-lock.json* ./
-# 安装依赖，包括Supabase UI
-RUN npm ci && npm install @supabase/ui --legacy-peer-deps
+# 安装依赖
+RUN npm ci --legacy-peer-deps
 
 # 构建阶段 - 编译应用
 FROM node:18-alpine AS builder
