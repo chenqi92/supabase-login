@@ -1,15 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { Auth } from "@supabase/ui";
+import { Auth } from "@supabase/auth-ui-react";
+import { ThemeSupa } from "@supabase/auth-ui-shared";
 import { useI18n } from "@/components/providers/i18n-provider";
 import { Button } from "@/components/ui/button";
 
 export default function ResetPasswordPage() {
   const { t } = useI18n();
   const supabase = createClientComponentClient();
+  const [origin, setOrigin] = useState<string>("");
+
+  // 客户端初始化时设置origin
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
 
   return (
     <div className="container flex h-screen w-screen flex-col items-center justify-center">
@@ -24,12 +31,16 @@ export default function ResetPasswordPage() {
         </div>
 
         <div className="grid gap-6">
-          <Auth
-            supabaseClient={supabase}
-            view="forgotten_password"
-            redirectTo={`${window.location.origin}/login/auth/callback?next=/update-password`}
-            className="supabase-auth-ui"
-          />
+          {origin && (
+            <div className="supabase-auth-ui">
+              <Auth
+                supabaseClient={supabase}
+                appearance={{ theme: ThemeSupa }}
+                view="forgotten_password"
+                redirectTo={`${origin}/login/auth/callback?next=/update-password`}
+              />
+            </div>
+          )}
         </div>
 
         <Button asChild variant="outline">

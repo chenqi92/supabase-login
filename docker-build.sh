@@ -76,6 +76,9 @@ SITE_URL=https://login.allbs.cn
 GOTRUE_EXTERNAL_GITHUB_ENABLED=true
 GOTRUE_EXTERNAL_GOOGLE_ENABLED=true
 
+# 超级管理员入口控制
+NEXT_PUBLIC_SHOW_ADMIN_ENTRY=false
+
 # 版本控制
 APP_VERSION=$VERSION
 
@@ -135,6 +138,7 @@ build_image() {
         --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY \
         --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=$GOTRUE_EXTERNAL_GITHUB_ENABLED \
         --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=$GOTRUE_EXTERNAL_GOOGLE_ENABLED \
+        --build-arg NEXT_PUBLIC_SHOW_ADMIN_ENTRY=${NEXT_PUBLIC_SHOW_ADMIN_ENTRY:-false} \
         -t supabase-login-ui:$VERSION .
     
     if [ $? -ne 0 ]; then
@@ -182,6 +186,7 @@ build_latest() {
         --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY \
         --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=$GOTRUE_EXTERNAL_GITHUB_ENABLED \
         --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=$GOTRUE_EXTERNAL_GOOGLE_ENABLED \
+        --build-arg NEXT_PUBLIC_SHOW_ADMIN_ENTRY=${NEXT_PUBLIC_SHOW_ADMIN_ENTRY:-false} \
         -t supabase-login-ui:$CURRENT_VERSION \
         -t supabase-login-ui:latest .
     
@@ -242,6 +247,7 @@ build_latest() {
                 --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY \
                 --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=$GOTRUE_EXTERNAL_GITHUB_ENABLED \
                 --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=$GOTRUE_EXTERNAL_GOOGLE_ENABLED \
+                --build-arg NEXT_PUBLIC_SHOW_ADMIN_ENTRY=${NEXT_PUBLIC_SHOW_ADMIN_ENTRY:-false} \
                 -t $REMOTE_TAG_SPECIFIC \
                 -t $REMOTE_TAG_LATEST \
                 --push .
@@ -490,6 +496,7 @@ push_image() {
         --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY \
         --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=$GOTRUE_EXTERNAL_GITHUB_ENABLED \
         --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=$GOTRUE_EXTERNAL_GOOGLE_ENABLED \
+        --build-arg NEXT_PUBLIC_SHOW_ADMIN_ENTRY=${NEXT_PUBLIC_SHOW_ADMIN_ENTRY:-false} \
         -t $REMOTE_TAG \
         --push .
     
@@ -530,6 +537,7 @@ push_image() {
             --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY \
             --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=$GOTRUE_EXTERNAL_GITHUB_ENABLED \
             --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=$GOTRUE_EXTERNAL_GOOGLE_ENABLED \
+            --build-arg NEXT_PUBLIC_SHOW_ADMIN_ENTRY=${NEXT_PUBLIC_SHOW_ADMIN_ENTRY:-false} \
             -t $REMOTE_TAG_SPECIFIC \
             --push .
         
@@ -568,6 +576,7 @@ build_multiarch() {
         --build-arg NEXT_PUBLIC_SITE_URL=${SITE_URL} \
         --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=${GOTRUE_EXTERNAL_GITHUB_ENABLED} \
         --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=${GOTRUE_EXTERNAL_GOOGLE_ENABLED} \
+        --build-arg NEXT_PUBLIC_SHOW_ADMIN_ENTRY=${NEXT_PUBLIC_SHOW_ADMIN_ENTRY:-false} \
         --build-arg APP_VERSION=${VERSION} \
         -t supabase-login-ui:${VERSION} \
         --output "type=image,push=false" .
@@ -639,6 +648,7 @@ build_all_arch() {
         --build-arg NEXT_PUBLIC_SITE_URL=${SITE_URL} \
         --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=${GOTRUE_EXTERNAL_GITHUB_ENABLED} \
         --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=${GOTRUE_EXTERNAL_GOOGLE_ENABLED} \
+        --build-arg NEXT_PUBLIC_SHOW_ADMIN_ENTRY=${NEXT_PUBLIC_SHOW_ADMIN_ENTRY:-false} \
         --build-arg APP_VERSION=${VERSION} \
         -t ${REMOTE_TAG_SPECIFIC} \
         -t ${REMOTE_TAG_LATEST} \
@@ -741,6 +751,7 @@ build_and_push_multiarch() {
         --build-arg NEXT_PUBLIC_SITE_URL=${SITE_URL} \
         --build-arg NEXT_PUBLIC_AUTH_GITHUB_ENABLED=${GOTRUE_EXTERNAL_GITHUB_ENABLED:-true} \
         --build-arg NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=${GOTRUE_EXTERNAL_GOOGLE_ENABLED:-true} \
+        --build-arg NEXT_PUBLIC_SHOW_ADMIN_ENTRY=${NEXT_PUBLIC_SHOW_ADMIN_ENTRY:-false} \
         --build-arg APP_VERSION=${CURRENT_VERSION} \
         -t ${REMOTE_TAG_SPECIFIC} \
         -t ${REMOTE_TAG_LATEST} \

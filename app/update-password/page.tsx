@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { Auth } from "@supabase/ui";
+import { Auth } from "@supabase/auth-ui-react";
+import { ThemeSupa } from "@supabase/auth-ui-shared";
 import { useI18n } from "@/components/providers/i18n-provider";
 import { LanguageSwitcher } from "@/components/auth/language-switcher";
 
@@ -65,11 +66,13 @@ export default function UpdatePasswordPage() {
           </div>
         ) : (
           <div className="grid gap-6">
-            <Auth
-              supabaseClient={supabase}
-              view="update_password"
-              className="supabase-auth-ui"
-            />
+            <div className="supabase-auth-ui">
+              <Auth
+                supabaseClient={supabase}
+                appearance={{ theme: ThemeSupa }}
+                view="update_password"
+              />
+            </div>
           </div>
         )}
       </div>
