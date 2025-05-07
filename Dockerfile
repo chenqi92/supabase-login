@@ -13,7 +13,8 @@ RUN npm config set registry https://registry.npmmirror.com
 
 # 单独复制package文件 - 改进缓存利用率
 COPY package.json package-lock.json* ./
-RUN npm ci
+# 安装依赖，包括Supabase UI
+RUN npm ci && npm install @supabase/ui --legacy-peer-deps
 
 # 构建阶段 - 编译应用
 FROM node:18-alpine AS builder
@@ -123,7 +124,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 CMD curl 
 # 镜像标签
 LABEL maintainer="kkape" \
       org.opencontainers.image.source="https://github.com/kkape/supabase-login-ui" \
-      org.opencontainers.image.description="Supabase登录UI多架构镜像"
+      org.opencontainers.image.description="Supabase登录UI多架构镜像，使用官方Supabase UI组件库"
 
 # 启动应用
 CMD ["node", "server.js"]

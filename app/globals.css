@@ -73,4 +73,49 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Supabase UI 自定义样式 */
+.supabase-auth-ui {
+  width: 100%;
+}
+
+.supabase-auth-ui button {
+  background-color: hsl(var(--primary)) !important;
+  color: white !important;
+  border-radius: var(--radius) !important;
+  font-weight: 500 !important;
+}
+
+.supabase-auth-ui button:hover {
+  opacity: 0.9 !important;
+}
+
+.supabase-auth-ui input {
+  border-color: hsl(var(--input)) !important;
+  background-color: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+  border-radius: var(--radius) !important;
+}
+
+.supabase-auth-ui label {
+  color: hsl(var(--foreground)) !important;
+}
+
+.supabase-auth-ui a {
+  color: hsl(var(--primary)) !important;
+}
+
+.supabase-auth-ui .sbui-btn-social {
+  border: 1px solid hsl(var(--border)) !important;
+  background-color: transparent !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.supabase-auth-ui .sbui-typography-text {
+  color: hsl(var(--foreground)) !important;
+}
+
+.supabase-auth-ui .sbui-typography-link {
+  color: hsl(var(--primary)) !important;
 } 

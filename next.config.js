@@ -3,7 +3,7 @@ const nextConfig = {
   output: 'standalone', // 为 Docker 构建优化
   reactStrictMode: true,
   basePath: '/login', // 设置应用基础路径为/login
-  swcMinify: process.env.NEXT_ARCHITECTURE === 'unsupported' ? false : true, // 在不支持的架构上禁用swc
+  swcMinify: process.env.NEXT_ARCHITECTURE !== 'unsupported', // 在不支持的架构上禁用swc
   typescript: {
     // !! 警告 !!
     // 仅在生产环境构建时禁用类型检查
