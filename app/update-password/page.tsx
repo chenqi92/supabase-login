@@ -13,6 +13,12 @@ export default function UpdatePasswordPage() {
   const { t } = useI18n();
   const supabase = createClientComponentClient();
   const [message, setMessage] = useState<string | null>(null);
+  const [origin, setOrigin] = useState<string>("");
+
+  // 客户端初始化时设置origin
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
 
   // 检查是否通过重置链接访问
   useEffect(() => {
