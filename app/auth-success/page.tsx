@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { useI18n } from "@/components/providers/i18n-provider";
+import { LanguageSwitcher } from "@/components/auth/language-switcher";
 
 export default function AuthSuccessPage() {
   const { t } = useI18n();
@@ -53,6 +54,9 @@ export default function AuthSuccessPage() {
   
   return (
     <div className="flex h-screen w-full flex-col items-center justify-center">
+      <div className="absolute top-4 right-4">
+        <LanguageSwitcher />
+      </div>
       <div className="w-[350px] space-y-6 text-center">
         {!error ? (
           <>

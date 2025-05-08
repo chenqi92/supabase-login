@@ -9,6 +9,10 @@ import { cn } from "@/lib/utils";
 export function LanguageSwitcher() {
   const { locale, setLocale, t } = useI18n();
 
+  const handleLanguageChange = (value: string) => {
+    setLocale(value as "zh" | "en");
+  };
+
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -25,7 +29,7 @@ export function LanguageSwitcher() {
             "z-50 min-w-[8rem] overflow-hidden rounded-md border border-slate-200 bg-white p-1 shadow-md animate-in data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 dark:border-slate-800 dark:bg-slate-950"
           )}
         >
-          <DropdownMenu.RadioGroup value={locale} onValueChange={value => setLocale(value as "zh" | "en")}>
+          <DropdownMenu.RadioGroup value={locale} onValueChange={handleLanguageChange}>
             <DropdownMenu.RadioItem
               value="zh"
               className={cn(
